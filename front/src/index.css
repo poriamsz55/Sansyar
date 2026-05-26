@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Gray Background / White Cards */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    /* Blue Accent */
+    --primary: 217 91% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Dark Navy */
+    --navy: 222 47% 17%;
+    --navy-foreground: 210 40% 98%;
+
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 17%;
+
+    /* Green Success */
+    --success: 142 71% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 214 32% 93%;
+    --accent-foreground: 222 47% 17%;
+
+    --border: 214 24% 89%;
+    --input: 214 24% 89%;
+    --ring: 217 91% 53%;
+
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "ss01";
+  }
+
+  /* Persian digits feel native; keep numbers tabular where helpful */
+  .tnum {
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer utilities {
+  .hero-gradient {
+    background-image: radial-gradient(
+        80% 120% at 100% 0%,
+        hsl(217 91% 53% / 0.18),
+        transparent 60%
+      ),
+      radial-gradient(60% 90% at 0% 100%, hsl(142 71% 42% / 0.16), transparent 55%),
+      linear-gradient(180deg, hsl(222 47% 17%), hsl(222 47% 13%));
+  }
+
+  .glass {
+    background: hsl(0 0% 100% / 0.08);
+    backdrop-filter: blur(12px);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

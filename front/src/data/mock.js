@@ -1,0 +1,360 @@
+// Local mock dataset shaped exactly like the backend JSON responses
+// (internal/venue, internal/booking). Lets the whole UI run without a server.
+
+const img = (id, w = 1000) =>
+  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
+
+export const SPORT_BY_ID = {
+  "sport-futsal": "فوتسال",
+  "sport-football": "فوتبال",
+  "sport-volleyball": "والیبال",
+  "sport-basketball": "بسکتبال",
+  "sport-tennis": "تنیس",
+};
+
+export const complexes = [
+  {
+    id: "complex-azadi",
+    owner_id: "user-owner",
+    name: "مجموعه ورزشی آزادی",
+    slug: "azadi-sport-complex",
+    description:
+      "رزرو آنلاین سالن‌های فوتسال، والیبال و بسکتبال با پرداخت امن و قوانین شفاف. مجموعه‌ای استاندارد در غرب تهران با امکانات کامل.",
+    city: "تهران",
+    neighborhood: "آزادی",
+    address: "تهران، ضلع غربی ورزشگاه آزادی",
+    contact_phone: "02100000000",
+    images: [
+      img("1577223625816-7546f13df25d"),
+      img("1505666287802-931dc83948e9"),
+      img("1546519638-68e109498ffc"),
+    ],
+    amenities: ["پارکینگ", "رختکن", "دوش", "بوفه", "تهویه مطبوع"],
+    rules: [
+      "حضور ۱۵ دقیقه پیش از شروع سانس الزامی است.",
+      "استفاده از کفش مناسب سالن الزامی است.",
+    ],
+    status: "approved",
+    rating_avg: 4.7,
+    rating_count: 128,
+    sport_ids: ["sport-futsal", "sport-volleyball", "sport-basketball"],
+    lowest_price: 2250000,
+    discount_percent: 10,
+    available_slot_count: 8,
+  },
+  {
+    id: "complex-enghelab",
+    owner_id: "user-owner",
+    name: "باشگاه انقلاب",
+    slug: "enghelab-club",
+    description:
+      "کورت‌های تنیس و سالن چندمنظوره با نورپردازی حرفه‌ای و مربیان مجرب در قلب تهران.",
+    city: "تهران",
+    neighborhood: "ولنجک",
+    address: "تهران، خیابان ولیعصر، مجموعه ورزشی انقلاب",
+    contact_phone: "02122220000",
+    images: [img("1554068865-24cecd4e34b8"), img("1595435934249-5df7ed86e1c0")],
+    amenities: ["پارکینگ", "رختکن", "بوفه", "نور حرفه‌ای", "تماشاگر"],
+    rules: ["لغو رزرو تا ۲۴ ساعت قبل رایگان است."],
+    status: "approved",
+    rating_avg: 4.5,
+    rating_count: 86,
+    sport_ids: ["sport-tennis", "sport-basketball"],
+    lowest_price: 3000000,
+    discount_percent: 0,
+    available_slot_count: 5,
+  },
+  {
+    id: "complex-shahr",
+    owner_id: "user-owner",
+    name: "مجموعه ورزشی شهر کرج",
+    slug: "karaj-city-sport",
+    description:
+      "زمین فوتبال چمن مصنوعی و سالن فوتسال سرپوشیده با ظرفیت بالا و دسترسی آسان.",
+    city: "کرج",
+    neighborhood: "عظیمیه",
+    address: "کرج، عظیمیه، بلوار اصلی",
+    contact_phone: "02634440000",
+    images: [img("1459865264687-595d652de67e"), img("1551958219-acbc608c6377")],
+    amenities: ["پارکینگ", "رختکن", "دوش", "اسکوربرد"],
+    rules: ["استفاده از استوک ممنوع است."],
+    status: "approved",
+    rating_avg: 4.2,
+    rating_count: 54,
+    sport_ids: ["sport-football", "sport-futsal"],
+    lowest_price: 1800000,
+    discount_percent: 15,
+    available_slot_count: 12,
+  },
+  {
+    id: "complex-naghsh",
+    owner_id: "user-owner",
+    name: "سالن والیبال نقش جهان",
+    slug: "naghsh-jahan-volleyball",
+    description:
+      "سالن تخصصی والیبال با کفپوش استاندارد فدراسیون و امکانات رفاهی کامل در اصفهان.",
+    city: "اصفهان",
+    neighborhood: "خیابان جی",
+    address: "اصفهان، خیابان جی، مجموعه نقش جهان",
+    contact_phone: "03133330000",
+    images: [img("1612872087720-bb876e2e67d1"), img("1547347298-4074fc3086f0")],
+    amenities: ["رختکن", "دوش", "تهویه مطبوع", "تماشاگر"],
+    rules: ["ورود با کفش رو ممنوع است."],
+    status: "approved",
+    rating_avg: 4.8,
+    rating_count: 41,
+    sport_ids: ["sport-volleyball"],
+    lowest_price: 2000000,
+    discount_percent: 0,
+    available_slot_count: 6,
+  },
+  {
+    id: "complex-pars",
+    owner_id: "user-owner",
+    name: "مجموعه ورزشی پارس",
+    slug: "pars-sport-complex",
+    description:
+      "سالن بسکتبال و فوتسال مدرن با کف پارکت حرفه‌ای، مناسب مسابقات و تمرینات گروهی.",
+    city: "مشهد",
+    neighborhood: "احمدآباد",
+    address: "مشهد، احمدآباد، خیابان ورزش",
+    contact_phone: "05138880000",
+    images: [img("1546519638-68e109498ffc"), img("1574623452334-1e0ac2b3ccb4")],
+    amenities: ["پارکینگ", "رختکن", "دوش", "بوفه", "اسکوربرد"],
+    rules: ["رعایت سکوت در زمان مسابقات الزامی است."],
+    status: "approved",
+    rating_avg: 4.4,
+    rating_count: 72,
+    sport_ids: ["sport-basketball", "sport-futsal"],
+    lowest_price: 2400000,
+    discount_percent: 5,
+    available_slot_count: 9,
+  },
+  {
+    id: "complex-shiraz",
+    owner_id: "user-owner",
+    name: "خانه فوتسال شیراز",
+    slug: "shiraz-futsal-house",
+    description:
+      "سالن فوتسال سرپوشیده با کیفیت بالا، رختکن مجهز و امکان رزرو سانس‌های شبانه.",
+    city: "شیراز",
+    neighborhood: "معالی‌آباد",
+    address: "شیراز، بلوار معالی‌آباد",
+    contact_phone: "07136660000",
+    images: [img("1577223625816-7546f13df25d"), img("1518611012118-696072aa579a")],
+    amenities: ["پارکینگ", "رختکن", "دوش", "نور حرفه‌ای"],
+    rules: ["پرداخت بیعانه برای تثبیت رزرو الزامی است."],
+    status: "approved",
+    rating_avg: 4.1,
+    rating_count: 33,
+    sport_ids: ["sport-futsal"],
+    lowest_price: 1500000,
+    discount_percent: 20,
+    available_slot_count: 7,
+  },
+];
+
+export const halls = [
+  {
+    id: "hall-azadi-futsal",
+    complex_id: "complex-azadi",
+    name: "سالن فوتسال شماره ۱",
+    supported_sport_ids: ["sport-futsal", "sport-volleyball"],
+    capacity: 22,
+    indoor_outdoor: "indoor",
+    floor_type: "پارکت",
+    dimensions: "۴۰×۲۰",
+    amenities: ["اسکوربرد", "تهویه مطبوع"],
+    gender_rule: "all",
+    base_price: 2500000,
+    images: [img("1577223625816-7546f13df25d", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-azadi-basketball",
+    complex_id: "complex-azadi",
+    name: "سالن بسکتبال مرکزی",
+    supported_sport_ids: ["sport-basketball"],
+    capacity: 30,
+    indoor_outdoor: "indoor",
+    floor_type: "پارکت",
+    dimensions: "۲۸×۱۵",
+    amenities: ["اسکوربرد", "تماشاگر"],
+    gender_rule: "all",
+    base_price: 3000000,
+    images: [img("1546519638-68e109498ffc", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-enghelab-tennis",
+    complex_id: "complex-enghelab",
+    name: "کورت تنیس شماره ۲",
+    supported_sport_ids: ["sport-tennis"],
+    capacity: 4,
+    indoor_outdoor: "outdoor",
+    floor_type: "هارد",
+    dimensions: "۲۳×۱۱",
+    amenities: ["نور حرفه‌ای"],
+    gender_rule: "all",
+    base_price: 3000000,
+    images: [img("1554068865-24cecd4e34b8", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-shahr-football",
+    complex_id: "complex-shahr",
+    name: "زمین چمن مصنوعی",
+    supported_sport_ids: ["sport-football"],
+    capacity: 14,
+    indoor_outdoor: "outdoor",
+    floor_type: "چمن مصنوعی",
+    dimensions: "۶۰×۴۰",
+    amenities: ["نور حرفه‌ای", "اسکوربرد"],
+    gender_rule: "men",
+    base_price: 1800000,
+    images: [img("1459865264687-595d652de67e", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-naghsh-volley",
+    complex_id: "complex-naghsh",
+    name: "سالن اصلی والیبال",
+    supported_sport_ids: ["sport-volleyball"],
+    capacity: 24,
+    indoor_outdoor: "indoor",
+    floor_type: "تارافلکس",
+    dimensions: "۱۸×۹",
+    amenities: ["تماشاگر", "تهویه مطبوع"],
+    gender_rule: "all",
+    base_price: 2000000,
+    images: [img("1612872087720-bb876e2e67d1", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-pars-basket",
+    complex_id: "complex-pars",
+    name: "سالن بسکتبال پارس",
+    supported_sport_ids: ["sport-basketball", "sport-futsal"],
+    capacity: 28,
+    indoor_outdoor: "indoor",
+    floor_type: "پارکت",
+    dimensions: "۲۸×۱۵",
+    amenities: ["اسکوربرد", "بوفه"],
+    gender_rule: "all",
+    base_price: 2400000,
+    images: [img("1546519638-68e109498ffc", 800)],
+    is_active: true,
+  },
+  {
+    id: "hall-shiraz-futsal",
+    complex_id: "complex-shiraz",
+    name: "سالن فوتسال شیراز",
+    supported_sport_ids: ["sport-futsal"],
+    capacity: 20,
+    indoor_outdoor: "indoor",
+    floor_type: "گرانولیت",
+    dimensions: "۳۸×۱۸",
+    amenities: ["رختکن", "نور حرفه‌ای"],
+    gender_rule: "all",
+    base_price: 1500000,
+    images: [img("1518611012118-696072aa579a", 800)],
+    is_active: true,
+  },
+];
+
+// Generate slots for the next 4 days, a few sessions per hall.
+function buildSlots() {
+  const out = [];
+  const hours = [8, 10, 16, 18, 20, 22];
+  let n = 0;
+  for (const hall of halls) {
+    const sportId = hall.supported_sport_ids[0];
+    for (let day = 0; day < 4; day++) {
+      for (const h of hours) {
+        n += 1;
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() + day + 1);
+        start.setHours(h);
+        const end = new Date(start.getTime() + 90 * 60000);
+        const discount = n % 4 === 0 ? 15 : n % 3 === 0 ? 10 : 0;
+        const base = hall.base_price;
+        // A spread of statuses so the slot grid looks realistic.
+        const status =
+          n % 5 === 0 ? "reserved" : n % 11 === 0 ? "maintenance" : "available";
+        out.push({
+          id: `slot-${hall.id}-${day}-${h}`,
+          hall_id: hall.id,
+          complex_id: hall.complex_id,
+          sport_id: sportId,
+          starts_at: start.toISOString(),
+          ends_at: end.toISOString(),
+          duration_minutes: 90,
+          base_price: base,
+          final_price: Math.round((base * (100 - discount)) / 100),
+          discount_percent: discount,
+          status,
+          payment_policy: "full_online",
+          min_deposit_amount: Math.round(base * 0.4),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+export const slots = buildSlots();
+
+export const bookings = [
+  {
+    id: "booking-1001",
+    customer_id: "user-customer",
+    complex_id: "complex-azadi",
+    hall_id: "hall-azadi-futsal",
+    sport_id: "sport-futsal",
+    slot_id: "slot-hall-azadi-futsal-0-20",
+    starts_at: slots.find((s) => s.id === "slot-hall-azadi-futsal-0-20")?.starts_at,
+    ends_at: slots.find((s) => s.id === "slot-hall-azadi-futsal-0-20")?.ends_at,
+    price: 2500000,
+    discount: 10,
+    final_amount: 2250000,
+    payment_type: "full_online",
+    payment_status: "paid",
+    status: "confirmed",
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "booking-1002",
+    customer_id: "user-customer",
+    complex_id: "complex-shahr",
+    hall_id: "hall-shahr-football",
+    sport_id: "sport-football",
+    slot_id: "slot-hall-shahr-football-1-18",
+    starts_at: slots.find((s) => s.id === "slot-hall-shahr-football-1-18")?.starts_at,
+    ends_at: slots.find((s) => s.id === "slot-hall-shahr-football-1-18")?.ends_at,
+    price: 1800000,
+    discount: 15,
+    final_amount: 1530000,
+    payment_type: "deposit_online_remaining_in_person",
+    payment_status: "deposit_paid",
+    status: "awaiting_payment",
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: "booking-1003",
+    customer_id: "user-customer",
+    complex_id: "complex-naghsh",
+    hall_id: "hall-naghsh-volley",
+    sport_id: "sport-volleyball",
+    slot_id: "slot-hall-naghsh-volley-0-16",
+    starts_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    ends_at: new Date(Date.now() - 5 * 86400000 + 90 * 60000).toISOString(),
+    price: 2000000,
+    discount: 0,
+    final_amount: 2000000,
+    payment_type: "full_online",
+    payment_status: "paid",
+    status: "completed",
+    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];

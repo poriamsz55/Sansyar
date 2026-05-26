@@ -1,0 +1,14 @@
+{
+  "name": "sansyar-platform",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/admin"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:admin": "npm --workspace apps/admin run dev",
+    "build": "npm --workspaces run build",
+    "test": "npm --workspaces run test --if-present"
+  }
+}
