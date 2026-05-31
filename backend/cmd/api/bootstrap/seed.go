@@ -41,7 +41,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 		}
 		items := []auth.User{
 			{ID: "user-admin", FullName: "مدیر کل", Phone: "09000000000", PasswordHash: string(hash), Role: auth.RoleSuperAdmin, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
-			{ID: "user-owner", FullName: "مدیر مجموعه", Phone: "09120000000", PasswordHash: string(hash), Role: auth.RoleVenueOwner, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
+			{ID: "user-owner", FullName: "مالک مجموعه", Phone: "09120000000", PasswordHash: string(hash), Role: auth.RoleVenueOwner, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
 			{ID: "user-customer", FullName: "کاربر نمونه", Phone: "09350000000", PasswordHash: string(hash), Role: auth.RoleCustomer, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
 		}
 		for _, item := range items {
@@ -62,7 +62,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 			ContactPhone: "02100000000", Images: []string{"/images/venues/azadi-1.jpg"}, Amenities: []string{"پارکینگ", "رختکن", "دوش", "بوفه"},
 			Rules:              []string{"حضور ۱۵ دقیقه پیش از شروع سانس الزامی است.", "استفاده از کفش مناسب سالن الزامی است."},
 			CancellationPolicy: venue.CancellationPolicy{FreeBeforeHours: 24, PartialBeforeHours: 6, PartialRefundPct: 50},
-			Status:             venue.ComplexApproved, RatingAvg: 4.7, RatingCount: 128, CreatedAt: now, UpdatedAt: now,
+			Status:             venue.ComplexPublished, RatingAvg: 4.7, RatingCount: 128, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := complexes.Create(ctx, complex); err != nil {
 			return err
@@ -71,7 +71,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 			ID: "hall-azadi-futsal", ComplexID: complex.ID, Name: "سالن فوتسال شماره ۱",
 			SupportedSportIDs: []string{"sport-futsal", "sport-volleyball"}, Capacity: 22, IndoorOutdoor: "indoor",
 			FloorType: "پارکت", Dimensions: "40x20", Amenities: []string{"اسکوربرد", "تهویه"}, GenderRule: "all",
-			BasePrice: 2500000, Images: []string{"/images/venues/hall-1.jpg"}, IsActive: true, CreatedAt: now, UpdatedAt: now,
+			BasePrice: 2500000, Images: []string{"/images/venues/hall-1.jpg"}, Status: venue.HallPublished, IsActive: true, CreatedAt: now, UpdatedAt: now,
 		}
 		if err := halls.Create(ctx, hall); err != nil {
 			return err

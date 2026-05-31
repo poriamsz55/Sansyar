@@ -7,7 +7,13 @@ const (
 	ComplexPendingApproval = "pending_approval"
 	ComplexApproved        = "approved"
 	ComplexRejected        = "rejected"
+	ComplexPublished       = "published"
 	ComplexSuspended       = "suspended"
+
+	HallPendingApproval = "pending_approval"
+	HallApproved        = "approved"
+	HallRejected        = "rejected"
+	HallPublished       = "published"
 
 	SlotAvailable   = "available"
 	SlotReserved    = "reserved"
@@ -63,6 +69,7 @@ type (
 		GenderRule        string    `json:"gender_rule" bson:"gender_rule"`
 		BasePrice         int64     `json:"base_price" bson:"base_price"`
 		Images            []string  `json:"images" bson:"images"`
+		Status            string    `json:"status" bson:"status"`
 		IsActive          bool      `json:"is_active" bson:"is_active"`
 		CreatedAt         time.Time `json:"created_at" bson:"created_at"`
 		UpdatedAt         time.Time `json:"updated_at" bson:"updated_at"`
@@ -97,8 +104,8 @@ type (
 		City               string             `json:"city" validate:"required"`
 		Neighborhood       string             `json:"neighborhood"`
 		Address            string             `json:"address" validate:"required"`
-		Lat                float64            `json:"lat" validate:"required"`
-		Lng                float64            `json:"lng" validate:"required"`
+		Lat                float64            `json:"lat"`
+		Lng                float64            `json:"lng"`
 		ContactPhone       string             `json:"contact_phone"`
 		Images             []string           `json:"images"`
 		Amenities          []string           `json:"amenities"`
@@ -112,10 +119,45 @@ type (
 		City         string   `json:"city"`
 		Neighborhood string   `json:"neighborhood"`
 		Address      string   `json:"address"`
+		Lat          *float64 `json:"lat"`
+		Lng          *float64 `json:"lng"`
 		ContactPhone string   `json:"contact_phone"`
 		Images       []string `json:"images"`
 		Amenities    []string `json:"amenities"`
 		Rules        []string `json:"rules"`
+	}
+
+	UpdateHallRequest struct {
+		Name              string   `json:"name"`
+		SupportedSportIDs []string `json:"supported_sport_ids"`
+		Capacity          *int     `json:"capacity"`
+		IndoorOutdoor     string   `json:"indoor_outdoor"`
+		FloorType         string   `json:"floor_type"`
+		Dimensions        string   `json:"dimensions"`
+		Amenities         []string `json:"amenities"`
+		GenderRule        string   `json:"gender_rule"`
+		BasePrice         *int64   `json:"base_price"`
+		Images            []string `json:"images"`
+		IsActive          *bool    `json:"is_active"`
+	}
+
+	UpdateSlotRequest struct {
+		Status string `json:"status" validate:"required"`
+	}
+
+	ComplexListItem struct {
+		Complex
+		LowestPrice        int64    `json:"lowest_price"`
+		AvailableSlotCount int      `json:"available_slot_count"`
+		DiscountPercent    int      `json:"discount_percent"`
+		SportIDs           []string `json:"sport_ids"`
+	}
+
+	PaginatedComplexes struct {
+		Items []ComplexListItem `json:"items"`
+		Total int64             `json:"total"`
+		Page  int               `json:"page"`
+		Limit int               `json:"limit"`
 	}
 
 	CreateHallRequest struct {

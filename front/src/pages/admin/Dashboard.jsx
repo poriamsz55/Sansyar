@@ -15,23 +15,27 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   listAllBookings,
-  listComplexes,
+  listOwnerComplexes,
   listSlots,
-  getStore,
+  loadVenueLookups,
 } from "@/api/endpoints";
-import { SPORT_BY_ID } from "@/data/mock";
+import { useSportsMap } from "@/hooks/useSportsMap";
 import { formatToman, toFa, formatJalaliDate, formatTime } from "@/lib/utils";
 
 export default function Dashboard() {
+  const sportsMap = useSportsMap();
   const [data, setData] = useState(null);
+  const [lookups, setLookups] = useState({ complexMap: {} });
 
   useEffect(() => {
     (async () => {
-      const [bookings, complexes, slots] = await Promise.all([
+      const [bookings, complexes, slots, maps] = await Promise.all([
         listAllBookings(),
-        listComplexes(),
+        listOwnerComplexes(),
         listSlots(),
+        loadVenueLookups({ admin: true }),
       ]);
+      setLookups(maps);
       setData({ bookings, complexes, slots });
     })();
   }, []);
@@ -84,8 +88,7 @@ export default function Dashboard() {
     },
   ];
 
-  const store = getStore();
-  const complexMap = Object.fromEntries(store.complexes.map((c) => [c.id, c]));
+  const complexMap = lookups.complexMap;
 
   return (
     <div className="space-y-6">
@@ -144,7 +147,7 @@ export default function Dashboard() {
                 <TR key={b.id}>
                   <TD className="font-mono text-xs">{b.id.slice(-6)}</TD>
                   <TD className="font-medium">{complexMap[b.complex_id]?.name}</TD>
-                  <TD>{SPORT_BY_ID[b.sport_id]}</TD>
+                  <TD>{sportsMap[b.sport_id] || b.sport_id}</TD>
                   <TD className="text-muted-foreground">{formatJalaliDate(b.starts_at)}</TD>
                   <TD className="tnum text-muted-foreground">{formatTime(b.starts_at)}</TD>
                   <TD className="font-semibold">{formatToman(b.final_amount)}</TD>

@@ -16,11 +16,10 @@ scripts        Local helpers
 ## Quick start
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d mongo
+docker compose -f deploy/docker-compose.yml up -d mongo minio
 cd backend && cp .env.example .env && go run ./cmd/api
 npm install
-npm run dev:web
-npm run dev:admin
+cd front && npm install && npm run dev
 ```
 
 See `docs/local-development.md` for seeded accounts and details.

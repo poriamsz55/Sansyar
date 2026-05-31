@@ -1,8 +1,4 @@
 // Thin fetch wrapper for the Sansyar Go API (base path /api/v1).
-//
-// This MVP renders from local mock data (see src/data/mock.js) so it runs with
-// no backend, but every screen is built around these calls. Flip the flag in
-// src/api/endpoints.js to talk to the real server once it is running.
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
@@ -30,10 +26,49 @@ export async function apiFetch(path, { method = "GET", body, headers } = {}) {
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
 
   if (!res.ok) {
     const message = data?.error || data?.message || "خطایی رخ داد";
+    throw new Error(message);
+  }
+  return data;
+}
+
+export async function apiUpload(file, { folder = "uploads", admin = false } = {}) {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", folder);
+
+  const path = admin ? "/admin/uploads" : "/owner/uploads";
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
+
+  if (!res.ok) {
+    const message = data?.error || data?.message || "خطا در آپلود تصویر";
     throw new Error(message);
   }
   return data;

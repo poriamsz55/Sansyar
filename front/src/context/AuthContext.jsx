@@ -36,6 +36,8 @@ export function AuthProvider({ children }) {
     login,
     logout,
     isAuthenticated: !!user,
+    isSuperAdmin: user?.role === "super_admin",
+    isVenueOwner: user?.role === "venue_owner" || user?.role === "venue_manager",
     isAdmin: user?.role === "super_admin" || user?.role === "venue_owner",
   };
 

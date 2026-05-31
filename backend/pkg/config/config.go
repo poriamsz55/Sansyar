@@ -20,6 +20,12 @@ type Config struct {
 	CORSOrigins    []string
 	SeedData       bool
 	LogLevel       string
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOBucket    string
+	MinIOUseSSL    bool
+	MinIOPublicURL string
 }
 
 func Load() *Config {
@@ -34,8 +40,14 @@ func Load() *Config {
 		JWTSecret:      env("JWT_SECRET", "change-me-in-production"),
 		AccessTokenTTL: durationEnv("ACCESS_TOKEN_TTL", 24*time.Hour),
 		CORSOrigins:    listEnv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174"),
-		SeedData:       boolEnv("SEED_DATA", true),
+		SeedData:       boolEnv("SEED_DATA", false),
 		LogLevel:       env("LOG_LEVEL", "info"),
+		MinIOEndpoint:  env("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey: env("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey: env("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOBucket:    env("MINIO_BUCKET", "sansyar"),
+		MinIOUseSSL:    boolEnv("MINIO_USE_SSL", false),
+		MinIOPublicURL: env("MINIO_PUBLIC_URL", "http://localhost:9000/sansyar"),
 	}
 }
 

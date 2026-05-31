@@ -98,3 +98,95 @@ func (s *Service) me(ctx context.Context, userID string) (User, error) {
 	}
 	return user, err
 }
+
+func (s *Service) listUsers(ctx context.Context, role string) ([]User, error) {
+	filter := bson.M{}
+	if role != "" {
+		filter["role"] = role
+	}
+	return s.users.FindAll(ctx, filter, database.Page{Limit: 500, Sort: bson.D{{Key: "created_at", Value: -1}}})
+}
+
+func (s *Service) createUser(ctx context.Context, req CreateUserRequest) (User, error) {
+	allowed := map[string]struct{}{
+		RoleVenueOwner: {},
+		RoleCustomer:   {},
+	}
+	if _, ok := allowed[req.Role]; !ok {
+		return User{}, fmt.Errorf("%w: role must be venue_owner or customer", errormap.ErrInvalidInput)
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+
+	now := time.Now().UTC()
+	user := User{
+		ID:           uuid.NewString(),
+		FullName:     req.FullName,
+		Phone:        req.Phone,
+		Email:        req.Email,
+		PasswordHash: string(passwordHash),
+		Role:         req.Role,
+		Status:       UserStatusActive,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.users.Create(ctx, user); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return User{}, fmt.Errorf("%w: phone already registered", errormap.ErrConflict)
+		}
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Service) updateUser(ctx context.Context, id string, req UpdateUserRequest) (User, error) {
+	if _, err := s.users.FindByID(ctx, id); errors.Is(err, database.ErrNotFound) {
+		return User{}, errormap.ErrNotFound
+	} else if err != nil {
+		return User{}, err
+	}
+
+	update := bson.M{"updated_at": time.Now().UTC()}
+	if req.FullName != nil {
+		update["full_name"] = *req.FullName
+	}
+	if req.Phone != nil {
+		update["phone"] = *req.Phone
+	}
+	if req.Email != nil {
+		update["email"] = *req.Email
+	}
+	if req.Status != nil {
+		if *req.Status != UserStatusActive && *req.Status != UserStatusSuspended {
+			return User{}, fmt.Errorf("%w: invalid status", errormap.ErrInvalidInput)
+		}
+		update["status"] = *req.Status
+	}
+	if req.Role != nil {
+		if *req.Role != RoleVenueOwner && *req.Role != RoleCustomer {
+			return User{}, fmt.Errorf("%w: role must be venue_owner or customer", errormap.ErrInvalidInput)
+		}
+		update["role"] = *req.Role
+	}
+	if err := s.users.Update(ctx, id, bson.M{"$set": update}); err != nil {
+		return User{}, err
+	}
+	return s.users.FindByID(ctx, id)
+}
+
+func (s *Service) suspendUser(ctx context.Context, id string) error {
+	user, err := s.users.FindByID(ctx, id)
+	if errors.Is(err, database.ErrNotFound) {
+		return errormap.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if user.Role == RoleSuperAdmin {
+		return errormap.ErrForbidden
+	}
+	return s.users.Update(ctx, id, bson.M{"$set": bson.M{"status": UserStatusSuspended, "updated_at": time.Now().UTC()}})
+}

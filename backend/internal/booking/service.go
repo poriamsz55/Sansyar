@@ -139,6 +139,43 @@ func (s *Service) cancel(ctx context.Context, customerID string, bookingID strin
 	return s.bookings.FindByID(ctx, bookingID)
 }
 
+func (s *Service) adminCancel(ctx context.Context, bookingID string) (Booking, error) {
+	item, err := s.bookings.FindByID(ctx, bookingID)
+	if errors.Is(err, database.ErrNotFound) {
+		return Booking{}, errormap.ErrNotFound
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if item.Status != StatusConfirmed && item.Status != StatusAwaitingPayment && item.Status != StatusPending {
+		return Booking{}, fmt.Errorf("%w: booking cannot be cancelled from current status", errormap.ErrConflict)
+	}
+	now := time.Now().UTC()
+	if err := s.bookings.Update(ctx, bookingID, bson.M{"$set": bson.M{"status": StatusCancelledByOwner, "updated_at": now}}); err != nil {
+		return Booking{}, err
+	}
+	_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": item.SlotID, "booking_id": item.ID}, bson.M{"$set": bson.M{"status": venue.SlotAvailable, "updated_at": now}, "$unset": bson.M{"reserved_by": "", "booking_id": ""}})
+	return s.bookings.FindByID(ctx, bookingID)
+}
+
+func (s *Service) adminConfirm(ctx context.Context, bookingID string) (Booking, error) {
+	item, err := s.bookings.FindByID(ctx, bookingID)
+	if errors.Is(err, database.ErrNotFound) {
+		return Booking{}, errormap.ErrNotFound
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if item.Status != StatusAwaitingPayment && item.Status != StatusPending {
+		return Booking{}, fmt.Errorf("%w: booking cannot be confirmed from current status", errormap.ErrConflict)
+	}
+	now := time.Now().UTC()
+	if err := s.bookings.Update(ctx, bookingID, bson.M{"$set": bson.M{"status": StatusConfirmed, "payment_status": "paid", "updated_at": now}}); err != nil {
+		return Booking{}, err
+	}
+	return s.bookings.FindByID(ctx, bookingID)
+}
+
 func CalculateRefund(amount int64, startsAt time.Time, cancelledAt time.Time, freeBeforeHours int, partialBeforeHours int, partialRefundPct int) RefundDecision {
 	hoursBefore := startsAt.Sub(cancelledAt).Hours()
 	if hoursBefore >= float64(freeBeforeHours) {

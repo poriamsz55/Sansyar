@@ -12,11 +12,13 @@ import (
 	"sansyar/backend/internal/payment"
 	"sansyar/backend/internal/review"
 	"sansyar/backend/internal/sport"
+	"sansyar/backend/internal/upload"
 	"sansyar/backend/internal/venue"
 	"sansyar/backend/internal/wallet"
 	"sansyar/backend/pkg/config"
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/logger"
+	"sansyar/backend/pkg/storage"
 )
 
 type App struct {
@@ -32,6 +34,7 @@ type App struct {
 	walletHandler  *wallet.Handler
 	reviewHandler  *review.Handler
 	financeHandler *finance.Handler
+	uploadHandler  *upload.Handler
 }
 
 func NewApp(ctx context.Context) (*App, error) {
@@ -64,6 +67,11 @@ func NewApp(ctx context.Context) (*App, error) {
 	venueService := venue.NewService(complexRepo, hallRepo, slotRepo)
 	bookingService := booking.NewService(bookingRepo, slotRepo, idempotencyRepo)
 
+	storageService, err := storage.NewService(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	app := &App{
 		cfg:            cfg,
 		db:             db,
@@ -71,11 +79,12 @@ func NewApp(ctx context.Context) (*App, error) {
 		authHandler:    auth.NewHandler(authService),
 		sportHandler:   sport.NewHandler(sportService),
 		venueHandler:   venue.NewHandler(venueService),
-		bookingHandler: booking.NewHandler(bookingService),
+		bookingHandler: booking.NewHandler(bookingService, venueService),
 		paymentHandler: payment.NewHandler(paymentRepo),
 		walletHandler:  wallet.NewHandler(walletAccountRepo, walletTransactionRepo),
 		reviewHandler:  review.NewHandler(reviewRepo),
 		financeHandler: finance.NewHandler(),
+		uploadHandler:  upload.NewHandler(storageService),
 	}
 
 	if cfg.SeedData {

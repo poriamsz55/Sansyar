@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listComplexes } from "@/api/endpoints";
-import { SPORTS, CITIES } from "@/lib/constants";
+import { listComplexes, listSports } from "@/api/endpoints";
+import { CITIES } from "@/lib/constants";
 import { toFa } from "@/lib/utils";
 
 const PRICE_STEPS = [
@@ -24,6 +24,8 @@ const PRICE_STEPS = [
 export default function ComplexList() {
   const [params, setParams] = useSearchParams();
   const [all, setAll] = useState(null);
+  const [error, setError] = useState(null);
+  const [sports, setSports] = useState([]);
 
   const filters = {
     q: params.get("q") || "",
@@ -33,8 +35,29 @@ export default function ComplexList() {
   };
 
   useEffect(() => {
-    listComplexes().then(setAll);
-  }, []);
+    let active = true;
+    (async () => {
+      setError(null);
+      try {
+        const [items, sp] = await Promise.all([
+          listComplexes({ city: filters.city || undefined, q: filters.q || undefined }),
+          listSports(),
+        ]);
+        if (active) {
+          setAll(items);
+          setSports(sp);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message);
+          setAll([]);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [filters.city, filters.q]);
 
   const results = useMemo(() => {
     if (!all) return null;
@@ -116,7 +139,7 @@ export default function ComplexList() {
                   onChange={(e) => update("sportId", e.target.value)}
                 >
                   <option value="">همه ورزش‌ها</option>
-                  {SPORTS.map((s) => (
+                  {sports.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
@@ -158,6 +181,11 @@ export default function ComplexList() {
 
         {/* Results */}
         <section>
+          {error && (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {results

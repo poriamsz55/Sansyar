@@ -44,4 +44,25 @@ type (
 		TokenType   string `json:"token_type"`
 		User        User   `json:"user"`
 	}
+
+	CreateUserRequest struct {
+		FullName string `json:"full_name" validate:"required,min=2"`
+		Phone    string `json:"phone" validate:"required,min=8"`
+		Email    string `json:"email"`
+		Password string `json:"password" validate:"required,min=8"`
+		Role     string `json:"role" validate:"required"`
+	}
+
+	UpdateUserRequest struct {
+		FullName *string `json:"full_name"`
+		Phone    *string `json:"phone"`
+		Email    *string `json:"email"`
+		Status   *string `json:"status"`
+		Role     *string `json:"role"`
+	}
+
+	UserWithComplexCount struct {
+		User
+		ComplexCount int `json:"complex_count"`
+	}
 )

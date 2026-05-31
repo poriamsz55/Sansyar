@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Minimal animated modal. Controlled via `open` / `onClose`.
-export function Dialog({ open, onClose, title, description, children, className }) {
+export function Dialog({ open, onClose, title, description, children, className, wide }) {
   return (
     <AnimatePresence>
       {open && (
@@ -21,7 +21,8 @@ export function Dialog({ open, onClose, title, description, children, className 
             role="dialog"
             aria-modal="true"
             className={cn(
-              "relative z-10 w-full max-w-lg overflow-hidden rounded-t-2xl border border-border bg-card shadow-soft-lg sm:rounded-2xl",
+              "relative z-10 w-full overflow-hidden rounded-t-2xl border border-border bg-card shadow-soft-lg sm:rounded-2xl",
+              wide ? "max-w-2xl" : "max-w-lg",
               className
             )}
             initial={{ y: 40, opacity: 0, scale: 0.98 }}
@@ -44,7 +45,7 @@ export function Dialog({ open, onClose, title, description, children, className 
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+            <div className={cn("p-5", wide ? "max-h-[80vh] overflow-y-auto" : "")}>{children}</div>
           </motion.div>
         </motion.div>
       )}

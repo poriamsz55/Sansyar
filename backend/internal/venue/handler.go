@@ -20,16 +20,148 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
+func parseListParams(c echo.Context) listComplexParams {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	return listComplexParams{
+		City:   c.QueryParam("city"),
+		Status: c.QueryParam("status"),
+		Query:  c.QueryParam("q"),
+		Page:   page,
+		Limit:  limit,
+	}
+}
+
 func (h *Handler) ListComplexes(c echo.Context) error {
-	items, err := h.service.listComplexes(c.Request().Context(), c.QueryParam("city"), "")
+	result, err := h.service.listComplexesPaginated(c.Request().Context(), parseListParams(c))
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
-	return c.JSON(http.StatusOK, items)
+	if c.QueryParam("page") != "" || c.QueryParam("limit") != "" {
+		return c.JSON(http.StatusOK, result)
+	}
+	return c.JSON(http.StatusOK, result.Items)
+}
+
+func (h *Handler) ListOwnerComplexes(c echo.Context) error {
+	params := parseListParams(c)
+	params.AllStatuses = true
+	params.OwnerID = h.service.ownerIDForRole(
+		requestctx.UserID(c.Request().Context()),
+		requestctx.Role(c.Request().Context()),
+	)
+	params.Status = c.QueryParam("status")
+	result, err := h.service.listComplexesPaginated(c.Request().Context(), params)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, result.Items)
+}
+
+func (h *Handler) ListAdminComplexes(c echo.Context) error {
+	params := parseListParams(c)
+	params.AllStatuses = true
+	params.Status = c.QueryParam("status")
+	result, err := h.service.listComplexesPaginated(c.Request().Context(), params)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, result.Items)
 }
 
 func (h *Handler) GetComplex(c echo.Context) error {
-	item, err := h.service.getComplex(c.Request().Context(), c.Param("id"))
+	item, err := h.service.getComplexSummary(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	if !complexIsPublic(item.Complex) {
+		return errormap.JSON(c, errormap.ErrNotFound)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) AdminCreateComplex(c echo.Context) error {
+	var req struct {
+		OwnerID string `json:"owner_id" validate:"required"`
+		CreateComplexRequest
+	}
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid complex payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	item, err := h.service.adminCreateComplex(c.Request().Context(), req.OwnerID, req.CreateComplexRequest)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) AdminUpdateComplex(c echo.Context) error {
+	var req UpdateComplexRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid complex payload")
+	}
+	item, err := h.service.updateComplex(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) AdminDeleteComplex(c echo.Context) error {
+	if err := h.service.deleteComplex(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) PublishComplex(c echo.Context) error {
+	item, err := h.service.publishComplex(c.Request().Context(), c.Param("id"), true)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) UnpublishComplex(c echo.Context) error {
+	item, err := h.service.publishComplex(c.Request().Context(), c.Param("id"), false)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) AdminUpdateHall(c echo.Context) error {
+	var req UpdateHallRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid hall payload")
+	}
+	item, err := h.service.updateHall(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) AdminDeleteHall(c echo.Context) error {
+	if err := h.service.deleteHall(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) PublishHall(c echo.Context) error {
+	item, err := h.service.publishHall(c.Request().Context(), c.Param("id"), true)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) UnpublishHall(c echo.Context) error {
+	item, err := h.service.publishHall(c.Request().Context(), c.Param("id"), false)
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
@@ -63,6 +195,13 @@ func (h *Handler) UpdateComplex(c echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
+func (h *Handler) DeleteComplex(c echo.Context) error {
+	if err := h.service.deleteComplex(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *Handler) ApproveComplex(c echo.Context) error {
 	item, err := h.service.approveComplex(c.Request().Context(), c.Param("id"), ComplexApproved)
 	if err != nil {
@@ -79,12 +218,71 @@ func (h *Handler) RejectComplex(c echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
-func (h *Handler) ListHalls(c echo.Context) error {
-	items, err := h.service.listHalls(c.Request().Context(), c.Param("complexId"))
+func (h *Handler) ListAdminHalls(c echo.Context) error {
+	items, err := h.service.listAllHalls(c.Request().Context(), c.QueryParam("status"))
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
 	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) ApproveHall(c echo.Context) error {
+	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallApproved)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) RejectHall(c echo.Context) error {
+	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallRejected)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) ListHalls(c echo.Context) error {
+	complex, err := h.service.getComplex(c.Request().Context(), c.Param("complexId"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	if !complexIsPublic(complex) {
+		return c.JSON(http.StatusOK, []Hall{})
+	}
+	items, err := h.service.listHalls(c.Request().Context(), c.Param("complexId"), true, true)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) ListOwnerHalls(c echo.Context) error {
+	ownerID := requestctx.UserID(c.Request().Context())
+	complexID := c.Param("complexId")
+	if err := h.service.assertComplexOwner(c.Request().Context(), complexID, ownerID); err != nil {
+		return errormap.JSON(c, err)
+	}
+	items, err := h.service.listHalls(c.Request().Context(), complexID, c.QueryParam("include_inactive") != "true", false)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) GetHall(c echo.Context) error {
+	item, err := h.service.getHall(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	if !hallIsPublic(item) {
+		return errormap.JSON(c, errormap.ErrNotFound)
+	}
+	complex, err := h.service.getComplex(c.Request().Context(), item.ComplexID)
+	if err != nil || !complexIsPublic(complex) {
+		return errormap.JSON(c, errormap.ErrNotFound)
+	}
+	return c.JSON(http.StatusOK, item)
 }
 
 func (h *Handler) CreateHall(c echo.Context) error {
@@ -102,6 +300,25 @@ func (h *Handler) CreateHall(c echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
+func (h *Handler) UpdateHall(c echo.Context) error {
+	var req UpdateHallRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid hall payload")
+	}
+	item, err := h.service.updateHall(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) DeleteHall(c echo.Context) error {
+	if err := h.service.deleteHall(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *Handler) CreateSlot(c echo.Context) error {
 	var req CreateSlotRequest
 	if err := c.Bind(&req); err != nil {
@@ -117,10 +334,28 @@ func (h *Handler) CreateSlot(c echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
+func (h *Handler) UpdateSlot(c echo.Context) error {
+	var req UpdateSlotRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid slot payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	item, err := h.service.updateSlot(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
 func (h *Handler) ListSlots(c echo.Context) error {
 	filter := bson.M{}
 	if hallID := c.Param("hallId"); hallID != "" {
 		filter["hall_id"] = hallID
+	}
+	if complexID := c.QueryParam("complex_id"); complexID != "" {
+		filter["complex_id"] = complexID
 	}
 	if sportID := c.QueryParam("sport_id"); sportID != "" {
 		filter["sport_id"] = sportID

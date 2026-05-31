@@ -89,6 +89,10 @@ func (r *Repository[T]) Update(ctx context.Context, id string, update any) error
 	return nil
 }
 
+func (r *Repository[T]) Count(ctx context.Context, filter any) (int64, error) {
+	return r.collection.CountDocuments(ctx, filter)
+}
+
 func (r *Repository[T]) Delete(ctx context.Context, id string) error {
 	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {

@@ -2,19 +2,27 @@
 // (internal/booking, internal/venue, internal/auth) so the UI stays in sync.
 
 export const ROLE = {
-  super_admin: "مدیر کل",
-  venue_owner: "مدیر مجموعه",
+  super_admin: "مدیر ارشد",
+  venue_owner: "مالک مجموعه",
   venue_manager: "مدیر سالن",
   staff: "کارمند",
-  customer: "کاربر",
+  customer: "مشتری",
 };
 
 export const COMPLEX_STATUS = {
   draft: { label: "پیش‌نویس", tone: "muted" },
   pending_approval: { label: "در انتظار تأیید", tone: "warning" },
   approved: { label: "تأیید شده", tone: "success" },
+  published: { label: "منتشر شده", tone: "primary" },
   rejected: { label: "رد شده", tone: "destructive" },
   suspended: { label: "تعلیق شده", tone: "destructive" },
+};
+
+export const HALL_STATUS = {
+  pending_approval: { label: "در انتظار تأیید", tone: "warning" },
+  approved: { label: "تأیید شده", tone: "success" },
+  published: { label: "منتشر شده", tone: "primary" },
+  rejected: { label: "رد شده", tone: "destructive" },
 };
 
 export const SLOT_STATUS = {

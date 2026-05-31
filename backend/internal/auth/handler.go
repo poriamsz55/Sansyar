@@ -64,3 +64,45 @@ func (h *Handler) Me(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, user)
 }
+
+func (h *Handler) ListUsers(c echo.Context) error {
+	items, err := h.service.listUsers(c.Request().Context(), c.QueryParam("role"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) CreateUser(c echo.Context) error {
+	var req CreateUserRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid user payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	user, err := h.service.createUser(c.Request().Context(), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusCreated, user)
+}
+
+func (h *Handler) UpdateUser(c echo.Context) error {
+	var req UpdateUserRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid user payload")
+	}
+	user, err := h.service.updateUser(c.Request().Context(), c.Param("id"), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, user)
+}
+
+func (h *Handler) SuspendUser(c echo.Context) error {
+	if err := h.service.suspendUser(c.Request().Context(), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}

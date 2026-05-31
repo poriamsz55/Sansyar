@@ -4,7 +4,8 @@ import { AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 
 import SiteLayout from "./layouts/SiteLayout";
-import AdminLayout from "./layouts/AdminLayout";
+import OwnerLayout from "./layouts/OwnerLayout";
+import PlatformLayout from "./layouts/PlatformLayout";
 
 import Home from "./pages/Home";
 import ComplexList from "./pages/ComplexList";
@@ -13,17 +14,40 @@ import Reservation from "./pages/Reservation";
 import MyReservations from "./pages/MyReservations";
 import Login from "./pages/Login";
 
-import AdminLogin from "./pages/admin/AdminLogin";
-import Dashboard from "./pages/admin/Dashboard";
-import AdminComplexes from "./pages/admin/AdminComplexes";
-import AdminHalls from "./pages/admin/AdminHalls";
-import AdminSlots from "./pages/admin/AdminSlots";
-import AdminReservations from "./pages/admin/AdminReservations";
+import OwnerLogin from "./pages/owner/OwnerLogin";
+import OwnerDashboard from "./pages/owner/OwnerDashboard";
+import OwnerComplexes from "./pages/owner/OwnerComplexes";
+import OwnerHalls from "./pages/owner/OwnerHalls";
+import OwnerSlots from "./pages/owner/OwnerSlots";
+import OwnerReservations from "./pages/owner/OwnerReservations";
 
-function RequireAdmin({ children }) {
-  const { isAdmin } = useAuth();
-  if (!isAdmin) return <Navigate to="/admin/login" replace />;
+import PlatformLogin from "./pages/platform/PlatformLogin";
+import PlatformDashboard from "./pages/platform/PlatformDashboard";
+import PlatformApprovals from "./pages/platform/PlatformApprovals";
+import PlatformComplexes from "./pages/platform/PlatformComplexes";
+import PlatformHalls from "./pages/platform/PlatformHalls";
+import PlatformOwners from "./pages/platform/PlatformOwners";
+import PlatformCustomers from "./pages/platform/PlatformCustomers";
+import PlatformBookings from "./pages/platform/PlatformBookings";
+import PlatformFinance from "./pages/platform/PlatformFinance";
+
+function RequireVenueOwner({ children }) {
+  const { isVenueOwner } = useAuth();
+  if (!isVenueOwner) return <Navigate to="/owner/login" replace />;
   return children;
+}
+
+function RequireSuperAdmin({ children }) {
+  const { isSuperAdmin } = useAuth();
+  if (!isSuperAdmin) return <Navigate to="/platform/login" replace />;
+  return children;
+}
+
+function LegacyAdminRedirect() {
+  const { isSuperAdmin, isVenueOwner } = useAuth();
+  if (isSuperAdmin) return <Navigate to="/platform/dashboard" replace />;
+  if (isVenueOwner) return <Navigate to="/owner/dashboard" replace />;
+  return <Navigate to="/owner/login" replace />;
 }
 
 export default function App() {
@@ -32,7 +56,6 @@ export default function App() {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        {/* User website */}
         <Route element={<SiteLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/complexes" element={<ComplexList />} />
@@ -43,23 +66,48 @@ export default function App() {
 
         <Route path="/login" element={<Login />} />
 
-        {/* Admin panel */}
-        <Route path="/admin/login" element={<AdminLogin />} />
+        {/* Venue Owner Dashboard */}
+        <Route path="/owner/login" element={<OwnerLogin />} />
         <Route
-          path="/admin"
+          path="/owner"
           element={
-            <RequireAdmin>
-              <AdminLayout />
-            </RequireAdmin>
+            <RequireVenueOwner>
+              <OwnerLayout />
+            </RequireVenueOwner>
           }
         >
-          <Route index element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="complexes" element={<AdminComplexes />} />
-          <Route path="halls" element={<AdminHalls />} />
-          <Route path="slots" element={<AdminSlots />} />
-          <Route path="reservations" element={<AdminReservations />} />
+          <Route index element={<Navigate to="/owner/dashboard" replace />} />
+          <Route path="dashboard" element={<OwnerDashboard />} />
+          <Route path="complexes" element={<OwnerComplexes />} />
+          <Route path="halls" element={<OwnerHalls />} />
+          <Route path="slots" element={<OwnerSlots />} />
+          <Route path="reservations" element={<OwnerReservations />} />
         </Route>
+
+        {/* Super Admin Platform */}
+        <Route path="/platform/login" element={<PlatformLogin />} />
+        <Route
+          path="/platform"
+          element={
+            <RequireSuperAdmin>
+              <PlatformLayout />
+            </RequireSuperAdmin>
+          }
+        >
+          <Route index element={<Navigate to="/platform/dashboard" replace />} />
+          <Route path="dashboard" element={<PlatformDashboard />} />
+          <Route path="approvals" element={<PlatformApprovals />} />
+          <Route path="complexes" element={<PlatformComplexes />} />
+          <Route path="halls" element={<PlatformHalls />} />
+          <Route path="owners" element={<PlatformOwners />} />
+          <Route path="customers" element={<PlatformCustomers />} />
+          <Route path="bookings" element={<PlatformBookings />} />
+          <Route path="finance" element={<PlatformFinance />} />
+        </Route>
+
+        {/* Legacy /admin paths */}
+        <Route path="/admin/login" element={<Navigate to="/owner/login" replace />} />
+        <Route path="/admin/*" element={<LegacyAdminRedirect />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

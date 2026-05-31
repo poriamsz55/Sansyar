@@ -16,10 +16,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { Dialog } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
-import { myBookings, cancelBooking, getStore } from "@/api/endpoints";
+import {
+  listAllBookings,
+  cancelBooking,
+  loadVenueLookups,
+} from "@/api/endpoints";
 import { useAuth } from "@/context/AuthContext";
+import { useSportsMap } from "@/hooks/useSportsMap";
 import { PAYMENT_TYPE } from "@/lib/constants";
-import { SPORT_BY_ID } from "@/data/mock";
 import {
   formatToman,
   formatJalaliDate,
@@ -32,20 +36,22 @@ const cancellable = new Set(["confirmed", "awaiting_payment", "pending"]);
 export default function MyReservations() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const sportsMap = useSportsMap();
   const [params, setParams] = useSearchParams();
   const [bookings, setBookings] = useState(null);
+  const [lookups, setLookups] = useState({ complexMap: {}, hallMap: {} });
   const [toCancel, setToCancel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showSuccess, setShowSuccess] = useState(params.get("success") === "1");
 
-  const store = getStore();
-  const complexMap = Object.fromEntries(store.complexes.map((c) => [c.id, c]));
-  const hallMap = Object.fromEntries(store.halls.map((h) => [h.id, h]));
+  const complexMap = lookups.complexMap;
+  const hallMap = lookups.hallMap;
 
   function load() {
-    myBookings().then((items) =>
-      setBookings([...items].sort((a, b) => b.created_at.localeCompare(a.created_at)))
-    );
+    Promise.all([myBookings(), loadVenueLookups()]).then(([items, maps]) => {
+      setLookups(maps);
+      setBookings([...items].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    });
   }
 
   useEffect(() => {
@@ -132,7 +138,7 @@ export default function MyReservations() {
                             {complex?.name || "مجموعه ورزشی"}
                           </h3>
                           <p className="text-xs text-muted-foreground">
-                            {hall?.name} · {SPORT_BY_ID[b.sport_id]}
+                            {hall?.name} · {sportsMap[b.sport_id] || b.sport_id}
                           </p>
                         </div>
                       </div>

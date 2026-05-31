@@ -6,17 +6,19 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
+	"sansyar/backend/internal/venue"
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/errormap"
 	"sansyar/backend/pkg/requestctx"
 )
 
 type Handler struct {
-	service *Service
+	service      *Service
+	venueService *venue.Service
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, venueService *venue.Service) *Handler {
+	return &Handler{service: service, venueService: venueService}
 }
 
 func (h *Handler) Create(c echo.Context) error {
@@ -51,7 +53,19 @@ func (h *Handler) Cancel(c echo.Context) error {
 }
 
 func (h *Handler) OwnerBookings(c echo.Context) error {
-	return c.JSON(http.StatusOK, []Booking{})
+	ownerID := requestctx.UserID(c.Request().Context())
+	complexIDs, err := h.venueService.ComplexIDsForOwner(c.Request().Context(), ownerID)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	if len(complexIDs) == 0 {
+		return c.JSON(http.StatusOK, []Booking{})
+	}
+	items, err := h.service.listForOwner(c.Request().Context(), complexIDs)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
 }
 
 func (h *Handler) AdminBookings(c echo.Context) error {
@@ -60,4 +74,20 @@ func (h *Handler) AdminBookings(c echo.Context) error {
 		return errormap.JSON(c, err)
 	}
 	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) AdminCancel(c echo.Context) error {
+	item, err := h.service.adminCancel(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) AdminConfirm(c echo.Context) error {
+	item, err := h.service.adminConfirm(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
 }

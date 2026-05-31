@@ -156,8 +156,13 @@ function Footer() {
               </Link>
             </li>
             <li>
-              <Link to="/admin/login" className="hover:text-white">
-                ورود ادمین
+              <Link to="/owner/login" className="hover:text-white">
+                پنل مالک مجموعه
+              </Link>
+            </li>
+            <li>
+              <Link to="/platform/login" className="hover:text-white">
+                پنل مدیر ارشد
               </Link>
             </li>
           </ul>

@@ -85,3 +85,38 @@
     scrollbar-width: none;
   }
 }
+
+.platform-theme {
+  --background: 224 30% 8%;
+  --foreground: 210 40% 96%;
+  --card: 224 28% 11%;
+  --card-foreground: 210 40% 96%;
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 224 20% 16%;
+  --secondary-foreground: 210 40% 90%;
+  --muted: 224 20% 14%;
+  --muted-foreground: 215 16% 58%;
+  --accent: 224 20% 18%;
+  --accent-foreground: 210 40% 96%;
+  --border: 224 18% 18%;
+  --input: 224 18% 18%;
+  --ring: 262 83% 58%;
+  --navy: 224 30% 6%;
+  --navy-foreground: 210 40% 96%;
+  --success: 142 71% 42%;
+  --destructive: 0 72% 51%;
+}
+
+.owner-theme {
+  --background: 0 0% 98%;
+  --foreground: 220 20% 14%;
+  --card: 0 0% 100%;
+  --primary: 160 84% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 160 20% 94%;
+  --muted: 160 10% 96%;
+  --accent: 160 20% 94%;
+  --border: 220 13% 91%;
+  --navy: 220 20% 20%;
+}

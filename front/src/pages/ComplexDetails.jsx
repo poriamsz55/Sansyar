@@ -20,8 +20,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RatingStars } from "@/components/RatingStars";
 import { SlotChip } from "@/components/SlotChip";
 import { getComplex, listHalls, listSlots } from "@/api/endpoints";
+import { useSportsMap } from "@/hooks/useSportsMap";
 import { savePendingReservation } from "@/lib/reservation";
-import { SPORT_BY_ID } from "@/data/mock";
 import {
   cn,
   formatToman,
@@ -46,25 +46,36 @@ function groupByDay(slots) {
 export default function ComplexDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const sportsMap = useSportsMap();
 
   const [complex, setComplex] = useState(null);
   const [halls, setHalls] = useState([]);
   const [slots, setSlots] = useState([]);
+  const [error, setError] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
   const [selected, setSelected] = useState(null); // { slot, hall }
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [c, h, s] = await Promise.all([
-        getComplex(id),
-        listHalls(id),
-        listSlots({ complexId: id }),
-      ]);
-      if (!active) return;
-      setComplex(c);
-      setHalls(h);
-      setSlots(s);
+      setError(null);
+      try {
+        const [c, h, s] = await Promise.all([
+          getComplex(id),
+          listHalls(id),
+          listSlots({ complexId: id }),
+        ]);
+        if (!active) return;
+        if (!c) {
+          setError("مجموعه یافت نشد");
+          return;
+        }
+        setComplex(c);
+        setHalls(h);
+        setSlots(s);
+      } catch (err) {
+        if (active) setError(err.message);
+      }
     })();
     return () => {
       active = false;
@@ -79,6 +90,16 @@ export default function ComplexDetails() {
       slot: selected.slot,
     });
     navigate("/reservation");
+  }
+
+  if (error) {
+    return (
+      <div className="container py-8">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      </div>
+    );
   }
 
   if (!complex) {
@@ -237,6 +258,7 @@ export default function ComplexDetails() {
                 hall={hall}
                 slots={slots.filter((s) => s.hall_id === hall.id)}
                 selected={selected}
+                sportsMap={sportsMap}
                 onSelect={(slot) => setSelected({ slot, hall })}
               />
             ))}
@@ -285,7 +307,7 @@ function Row({ label, value }) {
   );
 }
 
-function HallBlock({ hall, slots, selected, onSelect }) {
+function HallBlock({ hall, slots, selected, onSelect, sportsMap }) {
   const days = useMemo(() => groupByDay(slots), [slots]);
   const [activeDay, setActiveDay] = useState(0);
   const current = days[activeDay];
@@ -308,7 +330,7 @@ function HallBlock({ hall, slots, selected, onSelect }) {
               <div className="mt-2 flex flex-wrap gap-2">
                 {hall.supported_sport_ids.map((sid) => (
                   <Badge key={sid} tone="primary">
-                    {SPORT_BY_ID[sid] || sid}
+                    {sportsMap[sid] || sid}
                   </Badge>
                 ))}
               </div>

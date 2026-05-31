@@ -6,14 +6,18 @@
 - Node.js 18+
 - Docker
 
-## Run Mongo and API
+## Run Mongo, MinIO and API
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d mongo
+docker compose -f deploy/docker-compose.yml up -d mongo minio
 cd backend
 cp .env.example .env
 go run ./cmd/api
 ```
+
+MinIO console: `http://localhost:9001` (user/pass: `minioadmin` / `minioadmin`)
+
+Uploaded images are served from `http://localhost:9000/sansyar/...`
 
 Seed login accounts all use `Password123!`:
 

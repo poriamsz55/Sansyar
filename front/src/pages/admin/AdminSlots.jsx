@@ -11,13 +11,13 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import {
-  listComplexes,
+  listOwnerComplexes,
   listHalls,
   listSlots,
   createSlot,
   setSlotStatus,
 } from "@/api/endpoints";
-import { SPORT_BY_ID } from "@/data/mock";
+import { useSportsMap } from "@/hooks/useSportsMap";
 import {
   formatToman,
   toFa,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/utils";
 
 export default function AdminSlots() {
+  const sportsMap = useSportsMap();
   const [complexes, setComplexes] = useState([]);
   const [halls, setHalls] = useState([]);
   const [slots, setSlots] = useState(null);
@@ -41,9 +42,9 @@ export default function AdminSlots() {
   });
 
   async function load() {
-    const [cx, sl] = await Promise.all([listComplexes(), listSlots()]);
+    const [cx, sl] = await Promise.all([listOwnerComplexes(), listSlots()]);
     setComplexes(cx);
-    const hl = (await Promise.all(cx.map((c) => listHalls(c.id)))).flat();
+    const hl = (await Promise.all(cx.map((c) => listHalls(c.id, { includeInactive: true })))).flat();
     setHalls(hl);
     setSlots(sl);
     if (hl[0] && !form.hall_id) setForm((f) => ({ ...f, hall_id: hl[0].id }));
@@ -156,7 +157,7 @@ export default function AdminSlots() {
                         {complexMap[s.complex_id]?.name}
                       </span>
                     </TD>
-                    <TD>{SPORT_BY_ID[s.sport_id]}</TD>
+                    <TD>{sportsMap[s.sport_id] || s.sport_id}</TD>
                     <TD className="text-muted-foreground">
                       {formatJalaliDate(s.starts_at)}
                     </TD>

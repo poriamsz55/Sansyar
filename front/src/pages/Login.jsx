@@ -209,12 +209,12 @@ export default function Login() {
             )}
           </AnimatePresence>
 
-          <div className="mt-8 border-t border-border pt-5 text-center">
-            <Link
-              to="/admin/login"
-              className="text-sm font-medium text-muted-foreground hover:text-primary"
-            >
-              ورود ادمین ←
+          <div className="mt-8 space-y-2 border-t border-border pt-5 text-center text-sm">
+            <Link to="/owner/login" className="block font-medium text-muted-foreground hover:text-primary">
+              ورود مالک مجموعه ←
+            </Link>
+            <Link to="/platform/login" className="block text-muted-foreground hover:text-primary">
+              ورود مدیر ارشد پلتفرم ←
             </Link>
           </div>
         </div>
