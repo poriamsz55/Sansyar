@@ -14,6 +14,9 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "phone", Value: 1}}, Options: options.Index().SetUnique(true)},
 			{Keys: bson.D{{Key: "role", Value: 1}}},
 		},
+		"otp_codes": {
+			{Keys: bson.D{{Key: "expires_at", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+		},
 		"sports": {
 			{Keys: bson.D{{Key: "slug", Value: 1}}, Options: options.Index().SetUnique(true)},
 		},

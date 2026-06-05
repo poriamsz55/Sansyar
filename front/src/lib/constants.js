@@ -1,6 +1,9 @@
 // Persian labels for the backend enums. Keys mirror the Go constants exactly
 // (internal/booking, internal/venue, internal/auth) so the UI stays in sync.
 
+// Number of digits in the SMS OTP. Must match the backend OTP_CODE_LENGTH.
+export const OTP_LENGTH = Number(import.meta.env.VITE_OTP_LENGTH) || 5;
+
 export const ROLE = {
   super_admin: "مدیر ارشد",
   venue_owner: "مالک مجموعه",

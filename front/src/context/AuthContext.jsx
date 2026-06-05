@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { login as apiLogin } from "../api/endpoints";
+import { login as apiLogin, verifyOtp as apiVerifyOtp } from "../api/endpoints";
 import { setToken } from "../api/client";
 
 const AuthContext = createContext(null);
@@ -26,6 +26,12 @@ export function AuthProvider({ children }) {
     return u;
   }
 
+  async function loginWithOtp(phone, code) {
+    const u = await apiVerifyOtp(phone, code);
+    setUser(u);
+    return u;
+  }
+
   function logout() {
     setToken(null);
     setUser(null);
@@ -34,6 +40,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     login,
+    loginWithOtp,
     logout,
     isAuthenticated: !!user,
     isSuperAdmin: user?.role === "super_admin",

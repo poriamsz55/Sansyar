@@ -103,7 +103,11 @@ func (s *Service) setPublicReadPolicy(ctx context.Context) error {
 			"Resource": ["arn:aws:s3:::%s/*"]
 		}]
 	}`, s.bucket)
-	url := fmt.Sprintf("%s://%s/%s?policy", s.scheme(), s.endpoint, s.bucket)
+	// The subresource must be signed as "policy=" (SigV4 canonicalises a valueless
+	// query key with a trailing "="). Using bare "?policy" makes the signature MinIO
+	// computes differ from ours, so the request is rejected and the bucket never goes
+	// public — which surfaces later as a 403 when serving objects.
+	url := fmt.Sprintf("%s://%s/%s?policy=", s.scheme(), s.endpoint, s.bucket)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, strings.NewReader(policy))
 	if err != nil {
 		return err
@@ -115,6 +119,10 @@ func (s *Service) setPublicReadPolicy(ctx context.Context) error {
 		return fmt.Errorf("minio bucket policy: %w", err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		body, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("minio bucket policy: status %d: %s", res.StatusCode, string(body))
+	}
 	return nil
 }
 

@@ -21,6 +21,8 @@ func (a *App) setupRoutes(e *echo.Echo) {
 
 	api.POST("/auth/register", a.authHandler.Register)
 	api.POST("/auth/login", a.authHandler.Login)
+	api.POST("/auth/otp/request", a.authHandler.RequestOTP)
+	api.POST("/auth/otp/verify", a.authHandler.VerifyOTP)
 	api.POST("/auth/refresh", a.authHandler.Refresh)
 	api.POST("/auth/logout", a.authHandler.Logout)
 

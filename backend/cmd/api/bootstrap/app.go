@@ -18,6 +18,7 @@ import (
 	"sansyar/backend/pkg/config"
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/logger"
+	"sansyar/backend/pkg/sms"
 	"sansyar/backend/pkg/storage"
 )
 
@@ -47,6 +48,7 @@ func NewApp(ctx context.Context) (*App, error) {
 	}
 
 	userRepo := database.NewRepository[auth.User](database.GetCollection(db, "users"))
+	otpRepo := database.NewRepository[auth.OTPCode](database.GetCollection(db, "otp_codes"))
 	sportRepo := database.NewRepository[sport.Sport](database.GetCollection(db, "sports"))
 	complexRepo := database.NewRepository[venue.Complex](database.GetCollection(db, "complexes"))
 	hallRepo := database.NewRepository[venue.Hall](database.GetCollection(db, "halls"))
@@ -62,7 +64,13 @@ func NewApp(ctx context.Context) (*App, error) {
 		return nil, err
 	}
 
-	authService := auth.NewService(userRepo, cfg, log)
+	smsSender := sms.NewSender(sms.Config{
+		APIKey:   cfg.KavenegarAPIKey,
+		Sender:   cfg.KavenegarSender,
+		Template: cfg.KavenegarOTPTemplate,
+	}, log)
+
+	authService := auth.NewService(userRepo, otpRepo, smsSender, cfg, log)
 	sportService := sport.NewService(sportRepo)
 	venueService := venue.NewService(complexRepo, hallRepo, slotRepo)
 	bookingService := booking.NewService(bookingRepo, slotRepo, idempotencyRepo)

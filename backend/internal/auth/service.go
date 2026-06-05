@@ -16,16 +16,19 @@ import (
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/errormap"
 	sansyarjwt "sansyar/backend/pkg/jwt"
+	"sansyar/backend/pkg/sms"
 )
 
 type Service struct {
 	users  *database.Repository[User]
+	otps   *database.Repository[OTPCode]
+	sms    sms.OTPSender
 	cfg    *config.Config
 	logger *slog.Logger
 }
 
-func NewService(users *database.Repository[User], cfg *config.Config, logger *slog.Logger) *Service {
-	return &Service{users: users, cfg: cfg, logger: logger}
+func NewService(users *database.Repository[User], otps *database.Repository[OTPCode], smsSender sms.OTPSender, cfg *config.Config, logger *slog.Logger) *Service {
+	return &Service{users: users, otps: otps, sms: smsSender, cfg: cfg, logger: logger}
 }
 
 func (s *Service) register(ctx context.Context, req RegisterRequest) (AuthResponse, error) {
@@ -77,18 +80,11 @@ func (s *Service) login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if err != nil {
 		return AuthResponse{}, err
 	}
-
-	// Customers authenticate via SMS OTP, not a password. There is no OTP
-	// verification backend yet (sms.FakeProvider only logs), so outside
-	// production we accept any code for customer logins — matching the demo
-	// hint "هر کد ۴ رقمی پذیرفته می‌شود". Owner/admin accounts keep password auth.
-	// TODO: verify the OTP against a stored code once a real SMS provider lands.
-	if s.isOTPLogin(user) {
-		// OTP login: any code is accepted in non-production.
-	} else if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	// Password login is for staff/owner/admin accounts. Customers sign in via
+	// SMS OTP (see requestOTP/verifyOTP).
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return AuthResponse{}, errormap.ErrUnauthorized
 	}
-
 	if user.Status != UserStatusActive {
 		return AuthResponse{}, errormap.ErrForbidden
 	}
@@ -98,13 +94,6 @@ func (s *Service) login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		return AuthResponse{}, err
 	}
 	return AuthResponse{AccessToken: token, TokenType: "Bearer", User: user}, nil
-}
-
-// isOTPLogin reports whether the login should be treated as a customer OTP
-// login (password skipped). Customers sign in by SMS OTP; until a real OTP
-// verification backend exists, this is only allowed outside production.
-func (s *Service) isOTPLogin(user User) bool {
-	return user.Role == RoleCustomer && s.cfg.Env != "production"
 }
 
 func (s *Service) me(ctx context.Context, userID string) (User, error) {

@@ -35,16 +35,57 @@ cleanup() {
   wait 2>/dev/null || true
 }
 
-require_port() {
+port_pids() {
+  local port="$1"
+  ss -ltnp "sport = :${port}" 2>/dev/null | grep -oE 'pid=[0-9]+' | sed 's/pid=//' | sort -u
+}
+
+free_port() {
   local port="$1"
   local name="$2"
 
-  if port_open "${port}"; then
-    echo "Port ${port} is already in use; ${name} cannot start."
-    echo
+  if ! port_open "${port}"; then
+    return
+  fi
+
+  echo "Port ${port} is in use; stopping existing ${name} process(es)..."
+  local pids=()
+  while IFS= read -r pid; do
+    if [ -n "${pid}" ]; then
+      pids+=("${pid}")
+    fi
+  done < <(port_pids "${port}")
+
+  if [ "${#pids[@]}" -eq 0 ]; then
+    echo "Could not identify process on port ${port}."
     ss -ltnp "sport = :${port}" || true
-    echo
-    echo "Stop the existing process or override the port with ${name}_PORT."
+    exit 1
+  fi
+
+  for pid in "${pids[@]}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  local i
+  for i in $(seq 1 10); do
+    if ! port_open "${port}"; then
+      return
+    fi
+    sleep 0.2
+  done
+
+  for pid in "${pids[@]}"; do
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill -9 "${pid}" 2>/dev/null || true
+    fi
+  done
+
+  sleep 0.2
+  if port_open "${port}"; then
+    echo "Port ${port} is still in use after stopping ${name}."
+    ss -ltnp "sport = :${port}" || true
     exit 1
   fi
 }
@@ -65,8 +106,8 @@ start_service() {
 trap 'cleanup; exit 130' INT TERM
 trap cleanup EXIT
 
-require_port "${API_PORT}" "API"
-require_port "${WEB_PORT}" "WEB"
+free_port "${API_PORT}" "API"
+free_port "${WEB_PORT}" "WEB"
 
 echo "Starting MongoDB and MinIO..."
 if port_open "${MONGO_PORT}"; then

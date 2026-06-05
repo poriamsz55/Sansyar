@@ -49,6 +49,38 @@ func (h *Handler) Login(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+func (h *Handler) RequestOTP(c echo.Context) error {
+	var req OTPRequestRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid OTP request payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+
+	res, err := h.service.requestOTP(c.Request().Context(), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) VerifyOTP(c echo.Context) error {
+	var req OTPVerifyRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid OTP verify payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+
+	res, err := h.service.verifyOTP(c.Request().Context(), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
 func (h *Handler) Refresh(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "refresh token rotation will be enabled with the production auth provider"})
 }

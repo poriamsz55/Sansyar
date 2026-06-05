@@ -26,6 +26,16 @@ type Config struct {
 	MinIOBucket    string
 	MinIOUseSSL    bool
 	MinIOPublicURL string
+
+	KavenegarAPIKey      string
+	KavenegarSender      string
+	KavenegarOTPTemplate string
+
+	OTPCodeLength     int
+	OTPTTL            time.Duration
+	OTPMaxAttempts    int
+	OTPResendCooldown time.Duration
+	OTPDemoPhone      string
 }
 
 func Load() *Config {
@@ -48,6 +58,16 @@ func Load() *Config {
 		MinIOBucket:    env("MINIO_BUCKET", "sansyar"),
 		MinIOUseSSL:    boolEnv("MINIO_USE_SSL", false),
 		MinIOPublicURL: env("MINIO_PUBLIC_URL", "http://localhost:9000/sansyar"),
+
+		KavenegarAPIKey:      env("KAVENEGAR_API_KEY", ""),
+		KavenegarSender:      env("KAVENEGAR_SENDER", ""),
+		KavenegarOTPTemplate: env("KAVENEGAR_OTP_TEMPLATE", ""),
+
+		OTPCodeLength:     intEnv("OTP_CODE_LENGTH", 5),
+		OTPTTL:            durationEnv("OTP_TTL", 2*time.Minute),
+		OTPMaxAttempts:    intEnv("OTP_MAX_ATTEMPTS", 5),
+		OTPResendCooldown: durationEnv("OTP_RESEND_COOLDOWN", 60*time.Second),
+		OTPDemoPhone:      env("OTP_DEMO_PHONE", "09350000000"),
 	}
 }
 
@@ -68,6 +88,18 @@ func listEnv(key string, fallback string) []string {
 		}
 	}
 	return values
+}
+
+func intEnv(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 func boolEnv(key string, fallback bool) bool {

@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/kavenegar/kavenegar-go v0.0.0-20240205151018-77039f51467d
 	github.com/labstack/echo/v4 v4.13.3
 	go.mongodb.org/mongo-driver/v2 v2.0.0
 	golang.org/x/crypto v0.36.0

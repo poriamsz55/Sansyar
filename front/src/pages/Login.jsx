@@ -9,22 +9,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/AuthContext";
+import { requestOtp } from "@/api/endpoints";
+import { OTP_LENGTH } from "@/lib/constants";
 import { toFa } from "@/lib/utils";
 
 export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { login } = useAuth();
+  const { loginWithOtp } = useAuth();
   const redirect = params.get("redirect") || "/";
 
   const [step, setStep] = useState("phone"); // phone | otp
   const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const inputs = useRef([]);
 
-  function sendCode(e) {
+  async function sendCode(e) {
     e.preventDefault();
     if (!/^09\d{9}$/.test(phone)) {
       setError("شماره موبایل معتبر نیست (مثال: ۰۹۱۲۳۴۵۶۷۸۹)");
@@ -32,10 +34,14 @@ export default function Login() {
     }
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await requestOtp(phone);
       setStep("otp");
-    }, 700);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function onOtpChange(i, val) {
@@ -43,19 +49,19 @@ export default function Login() {
     const next = [...otp];
     next[i] = val;
     setOtp(next);
-    if (val && i < 3) inputs.current[i + 1]?.focus();
+    if (val && i < OTP_LENGTH - 1) inputs.current[i + 1]?.focus();
   }
 
   async function verify(e) {
     e.preventDefault();
-    if (otp.join("").length < 4) {
-      setError("کد تأیید ۴ رقمی را کامل وارد کن");
+    if (otp.join("").length < OTP_LENGTH) {
+      setError(`کد تأیید ${toFa(OTP_LENGTH)} رقمی را کامل وارد کن`);
       return;
     }
     setError("");
     setLoading(true);
     try {
-      await login({ phone, password: "otp" });
+      await loginWithOtp(phone, otp.join(""));
       navigate(redirect, { replace: true });
     } catch (err) {
       setError(err.message);
@@ -157,7 +163,7 @@ export default function Login() {
                 <div>
                   <h1 className="text-2xl font-extrabold">کد تأیید</h1>
                   <p className="mt-1.5 text-sm text-muted-foreground">
-                    کد ۴ رقمی ارسال‌شده به {toFa(phone)} را وارد کن.
+                    کد {toFa(OTP_LENGTH)} رقمی ارسال‌شده به {toFa(phone)} را وارد کن.
                   </p>
                 </div>
 
@@ -194,7 +200,7 @@ export default function Login() {
                   type="button"
                   onClick={() => {
                     setStep("phone");
-                    setOtp(["", "", "", ""]);
+                    setOtp(Array(OTP_LENGTH).fill(""));
                     setError("");
                   }}
                   className="w-full text-center text-sm text-muted-foreground hover:text-foreground"
@@ -203,7 +209,7 @@ export default function Login() {
                 </button>
 
                 <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">
-                  دمو: هر کد ۴ رقمی پذیرفته می‌شود.
+                  کد تأیید به شماره موبایلت پیامک شد.
                 </p>
               </motion.form>
             )}

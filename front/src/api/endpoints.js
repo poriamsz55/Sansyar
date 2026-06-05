@@ -66,6 +66,27 @@ export async function login({ phone, password }) {
   return { ...user, phone };
 }
 
+// Customer OTP login: request a code, then verify it to obtain a session.
+export async function requestOtp(phone) {
+  if (!USE_MOCK) {
+    return apiFetch("/auth/otp/request", { method: "POST", body: { phone } });
+  }
+  await delay();
+  return { message: "verification code sent", expires_in: 120 };
+}
+
+export async function verifyOtp(phone, code) {
+  if (!USE_MOCK) {
+    const data = await apiFetch("/auth/otp/verify", {
+      method: "POST",
+      body: { phone, code },
+    });
+    setToken(data.access_token);
+    return data.user;
+  }
+  return login({ phone });
+}
+
 // ---- Public discovery -----------------------------------------------------
 
 export async function listSports() {
