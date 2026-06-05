@@ -5,7 +5,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 API_PORT="${API_PORT:-8080}"
 WEB_PORT="${WEB_PORT:-5173}"
-ADMIN_PORT="${ADMIN_PORT:-5174}"
 MONGO_PORT="${MONGO_PORT:-27017}"
 
 pids=()
@@ -68,24 +67,33 @@ trap cleanup EXIT
 
 require_port "${API_PORT}" "API"
 require_port "${WEB_PORT}" "WEB"
-require_port "${ADMIN_PORT}" "ADMIN"
 
-echo "Starting MongoDB..."
+echo "Starting MongoDB and MinIO..."
 if port_open "${MONGO_PORT}"; then
   echo "MongoDB is already listening on port ${MONGO_PORT}; reusing it."
 else
   docker compose -f "${ROOT_DIR}/deploy/docker-compose.yml" up -d mongo
 fi
+docker compose -f "${ROOT_DIR}/deploy/docker-compose.yml" up -d minio
+
+if [ ! -f "${ROOT_DIR}/backend/.env" ]; then
+  cp "${ROOT_DIR}/backend/.env.example" "${ROOT_DIR}/backend/.env"
+fi
+
+if [ ! -d "${ROOT_DIR}/front/node_modules" ]; then
+  echo "Installing frontend dependencies..."
+  (cd "${ROOT_DIR}/front" && npm install)
+fi
 
 start_service "backend API" "backend" env PORT="${API_PORT}" go run ./cmd/api
-start_service "customer web" "." npm --workspace apps/web run dev -- --port "${WEB_PORT}"
-start_service "admin panel" "." npm --workspace apps/admin run dev -- --port "${ADMIN_PORT}"
+start_service "frontend" "front" npm run dev -- --port "${WEB_PORT}"
 
 echo
 echo "Sansyar dev stack is running:"
 echo "  API:          http://localhost:${API_PORT}"
-echo "  Customer PWA: http://localhost:${WEB_PORT}"
-echo "  Admin panel:  http://localhost:${ADMIN_PORT}"
+echo "  Frontend:     http://localhost:${WEB_PORT}"
+echo "  Admin panel:  http://localhost:${WEB_PORT}/admin/login"
+echo "  MinIO:        http://localhost:9001"
 echo
 echo "Press Ctrl+C to stop all dev services."
 
