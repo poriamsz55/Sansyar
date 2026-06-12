@@ -82,7 +82,7 @@ export default function PlatformLogin() {
             </Button>
           </form>
           <p className="mt-4 rounded-lg bg-muted/50 px-3 py-2 text-center text-xs text-muted-foreground">
-            دمو: <b>admin</b> + هر رمز
+            دمو: <b>admin</b> + رمز <b dir="ltr">Password123!</b>
           </p>
           <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 text-center text-sm">
             <Link to="/owner/login" className="text-muted-foreground hover:text-primary">

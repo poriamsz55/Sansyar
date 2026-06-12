@@ -80,7 +80,7 @@ export default function OwnerLogin() {
             </Button>
           </form>
           <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">
-            دمو: <b>owner</b> + هر رمز
+            دمو: <b>owner</b> + رمز <b dir="ltr">Password123!</b>
           </p>
           <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 text-center text-sm">
             <Link to="/platform/login" className="text-muted-foreground hover:text-primary">

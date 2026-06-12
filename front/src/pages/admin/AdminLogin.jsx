@@ -109,7 +109,7 @@ export default function AdminLogin() {
           </form>
 
           <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">
-            دمو: نام کاربری <b>admin</b> و هر رمزی وارد کن.
+            دمو: نام کاربری <b>admin</b> و رمز <b dir="ltr">Password123!</b> وارد کن.
           </p>
 
           <div className="mt-6 border-t border-border pt-4 text-center">
