@@ -295,7 +295,14 @@ export async function deleteComplex(id) {
     return apiFetch(`/owner/complexes/${id}`, { method: "DELETE" });
   await delay();
   const idx = store.complexes.findIndex((c) => c.id === id);
-  if (idx >= 0) store.complexes[idx].status = "suspended";
+  if (idx < 0) return;
+  // Mirror the backend: moderated complexes are deactivated, the rest are
+  // removed permanently.
+  if (["approved", "published", "suspended"].includes(store.complexes[idx].status)) {
+    store.complexes[idx].status = "suspended";
+  } else {
+    store.complexes.splice(idx, 1);
+  }
 }
 
 export async function approveComplex(id) {

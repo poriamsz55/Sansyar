@@ -37,6 +37,10 @@ func (h *Handler) ListComplexes(c echo.Context) error {
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
+	// Staged edits are moderation-internal; never expose them publicly.
+	for i := range result.Items {
+		result.Items[i].PendingChanges = nil
+	}
 	if c.QueryParam("page") != "" || c.QueryParam("limit") != "" {
 		return c.JSON(http.StatusOK, result)
 	}
@@ -77,6 +81,8 @@ func (h *Handler) GetComplex(c echo.Context) error {
 	if !complexIsPublic(item.Complex) {
 		return errormap.JSON(c, errormap.ErrNotFound)
 	}
+	// Staged edits are moderation-internal; never expose them publicly.
+	item.PendingChanges = nil
 	return c.JSON(http.StatusOK, item)
 }
 

@@ -16,8 +16,7 @@ import Login from "./pages/Login";
 
 import OwnerLogin from "./pages/owner/OwnerLogin";
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
-import OwnerComplexes from "./pages/owner/OwnerComplexes";
-import OwnerHalls from "./pages/owner/OwnerHalls";
+import OwnerVenues from "./pages/owner/OwnerVenues";
 import OwnerSlots from "./pages/owner/OwnerSlots";
 import OwnerReservations from "./pages/owner/OwnerReservations";
 
@@ -78,8 +77,10 @@ export default function App() {
         >
           <Route index element={<Navigate to="/owner/dashboard" replace />} />
           <Route path="dashboard" element={<OwnerDashboard />} />
-          <Route path="complexes" element={<OwnerComplexes />} />
-          <Route path="halls" element={<OwnerHalls />} />
+          <Route path="venues" element={<OwnerVenues />} />
+          {/* Old fragmented pages, now one unified flow */}
+          <Route path="complexes" element={<Navigate to="/owner/venues" replace />} />
+          <Route path="halls" element={<Navigate to="/owner/venues" replace />} />
           <Route path="slots" element={<OwnerSlots />} />
           <Route path="reservations" element={<OwnerReservations />} />
         </Route>

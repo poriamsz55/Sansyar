@@ -18,8 +18,33 @@ export const COMPLEX_STATUS = {
   approved: { label: "تأیید شده", tone: "success" },
   published: { label: "منتشر شده", tone: "primary" },
   rejected: { label: "رد شده", tone: "destructive" },
-  suspended: { label: "تعلیق شده", tone: "destructive" },
+  suspended: { label: "غیرفعال", tone: "muted" },
+  // Synthetic status: a live complex whose staged edits await re-approval.
+  pending_reapproval: { label: "در انتظار تأیید تغییرات", tone: "warning" },
 };
+
+/** Badge status for a complex; staged edits surface as pending_reapproval. */
+export const complexDisplayStatus = (c) =>
+  c?.pending_changes ? "pending_reapproval" : c?.status;
+
+/** A moderated complex can never be hard-deleted, only deactivated. */
+export const complexModerated = (c) =>
+  ["approved", "published", "suspended"].includes(c?.status);
+
+/**
+ * Staged edits awaiting re-approval take precedence over live values when the
+ * edit form re-opens, so the editor continues from their latest proposal.
+ */
+export function mergePendingChanges(c) {
+  const p = c?.pending_changes;
+  if (!p) return c;
+  const merged = { ...c };
+  for (const [key, value] of Object.entries(p)) {
+    if (key === "submitted_at") continue;
+    if (value !== "" && value != null) merged[key] = value;
+  }
+  return merged;
+}
 
 export const HALL_STATUS = {
   pending_approval: { label: "در انتظار تأیید", tone: "warning" },

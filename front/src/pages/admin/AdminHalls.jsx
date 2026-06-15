@@ -10,7 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/PageTransition";
-import { ImageUpload, ImagePreview } from "@/components/ImageUpload";
+import { ImageUpload, BannerUpload, ImagePreview, splitImages, joinImages } from "@/components/ImageUpload";
 import { toast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -34,7 +34,8 @@ const emptyForm = {
   indoor_outdoor: "indoor",
   gender_rule: "all",
   supported_sport_ids: [],
-  images: [],
+  banner: "",
+  gallery: [],
   amenities: [],
 };
 
@@ -95,7 +96,7 @@ export default function AdminHalls() {
       indoor_outdoor: h.indoor_outdoor || "indoor",
       gender_rule: h.gender_rule || "all",
       supported_sport_ids: h.supported_sport_ids || [],
-      images: h.images || [],
+      ...splitImages(h.images),
       amenities: h.amenities || [],
     });
     setOpen(true);
@@ -118,7 +119,7 @@ export default function AdminHalls() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { complexId, ...payload } = form;
+      const { complexId, banner, gallery, ...payload } = form;
       const body = {
         ...payload,
         capacity: Number(payload.capacity),
@@ -126,6 +127,7 @@ export default function AdminHalls() {
         supported_sport_ids: payload.supported_sport_ids.length
           ? payload.supported_sport_ids
           : [sports[0]?.id].filter(Boolean),
+        images: joinImages(banner, gallery),
       };
       if (editing) {
         await updateHall(editing.id, body);
@@ -249,11 +251,20 @@ export default function AdminHalls() {
       >
         <form onSubmit={submit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-1.5">
-            <Label>تصاویر</Label>
-            <ImageUpload
-              value={form.images}
-              onChange={(images) => set("images", images)}
+            <Label>تصویر بنر (اصلی)</Label>
+            <BannerUpload
+              value={form.banner}
+              onChange={(banner) => set("banner", banner)}
               folder="halls"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>گالری تصاویر</Label>
+            <ImageUpload
+              value={form.gallery}
+              onChange={(gallery) => set("gallery", gallery)}
+              folder="halls"
+              disabled={!form.banner}
             />
           </div>
           {!editing && (

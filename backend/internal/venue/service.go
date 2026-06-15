@@ -118,6 +118,20 @@ func complexIsPublic(c Complex) bool {
 	return c.Status == ComplexPublished
 }
 
+// complexModerated reports whether the complex has passed super admin
+// moderation at least once. Such complexes can never be hard-deleted — only
+// deactivated — so paid bookings and reviews keep a valid reference.
+func complexModerated(status string) bool {
+	return status == ComplexApproved || status == ComplexPublished || status == ComplexSuspended
+}
+
+// complexLive reports whether the complex is currently approved content.
+// Edits to live complexes are staged as pending changes that require
+// re-approval instead of going live immediately.
+func complexLive(status string) bool {
+	return status == ComplexApproved || status == ComplexPublished
+}
+
 func (s *Service) assertComplexOwner(ctx context.Context, complexID, ownerID string) error {
 	complex, err := s.getComplex(ctx, complexID)
 	if err != nil {
@@ -266,7 +280,45 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 		return Complex{}, errormap.ErrForbidden
 	}
 
-	update := bson.M{"updated_at": time.Now().UTC()}
+	now := time.Now().UTC()
+
+	// Live complexes keep serving their approved data: the edit is staged as
+	// pending changes and only goes live once a super admin re-approves it.
+	if complexLive(item.Status) {
+		changes := ComplexChanges{
+			Name:         req.Name,
+			Description:  req.Description,
+			City:         req.City,
+			Neighborhood: req.Neighborhood,
+			Address:      req.Address,
+			ContactPhone: req.ContactPhone,
+			Images:       req.Images,
+			Amenities:    req.Amenities,
+			Rules:        req.Rules,
+			SubmittedAt:  now,
+		}
+		if req.Lat != nil && req.Lng != nil {
+			changes.Location = &GeoJSONPoint{Type: "Point", Coordinates: []float64{*req.Lng, *req.Lat}}
+		}
+		if err := s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"pending_changes": changes, "updated_at": now}}); err != nil {
+			return Complex{}, err
+		}
+		return s.complexes.FindByID(ctx, id)
+	}
+
+	update := buildComplexUpdate(req, now)
+	// Editing a rejected submission re-enters the review queue.
+	if item.Status == ComplexRejected {
+		update["status"] = ComplexPendingApproval
+	}
+	if err := s.complexes.Update(ctx, id, bson.M{"$set": update}); err != nil {
+		return Complex{}, err
+	}
+	return s.complexes.FindByID(ctx, id)
+}
+
+func buildComplexUpdate(req UpdateComplexRequest, now time.Time) bson.M {
+	update := bson.M{"updated_at": now}
 	if req.Name != "" {
 		update["name"] = req.Name
 	}
@@ -297,10 +349,7 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 	if req.Lat != nil && req.Lng != nil {
 		update["location"] = GeoJSONPoint{Type: "Point", Coordinates: []float64{*req.Lng, *req.Lat}}
 	}
-	if err := s.complexes.Update(ctx, id, bson.M{"$set": update}); err != nil {
-		return Complex{}, err
-	}
-	return s.complexes.FindByID(ctx, id)
+	return update
 }
 
 func (s *Service) deleteComplex(ctx context.Context, ownerID string, id string) error {
@@ -314,19 +363,92 @@ func (s *Service) deleteComplex(ctx context.Context, ownerID string, id string) 
 	if err := rbac.RequireOwnerOrAdmin(ctx, item.OwnerID, ownerID); err != nil {
 		return err
 	}
-	return s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": ComplexSuspended, "updated_at": time.Now().UTC()}})
+
+	// Once moderated, a complex can only be deactivated so existing bookings
+	// and reviews keep a valid reference.
+	if complexModerated(item.Status) {
+		return s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": ComplexSuspended, "updated_at": time.Now().UTC()}})
+	}
+
+	// Never approved: the whole submission disappears, including its halls and
+	// slots. Nothing public ever referenced it.
+	if _, err := s.slots.Collection().DeleteMany(ctx, bson.M{"complex_id": id}); err != nil {
+		return err
+	}
+	if _, err := s.halls.Collection().DeleteMany(ctx, bson.M{"complex_id": id}); err != nil {
+		return err
+	}
+	return s.complexes.Delete(ctx, id)
 }
 
 func (s *Service) approveComplex(ctx context.Context, id string, status string) (Complex, error) {
 	if status != ComplexApproved && status != ComplexRejected {
 		return Complex{}, fmt.Errorf("%w: invalid approval status", errormap.ErrInvalidInput)
 	}
-	if err := s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}}); errors.Is(err, database.ErrNotFound) {
-		return Complex{}, errormap.ErrNotFound
-	} else if err != nil {
+	item, err := s.getComplex(ctx, id)
+	if err != nil {
+		return Complex{}, err
+	}
+
+	now := time.Now().UTC()
+
+	// A live complex with staged changes: approving applies them, rejecting
+	// discards them — either way the complex keeps its current live status.
+	if item.PendingChanges != nil && complexLive(item.Status) {
+		update := bson.M{
+			"$unset": bson.M{"pending_changes": ""},
+			"$set":   bson.M{"updated_at": now},
+		}
+		if status == ComplexApproved {
+			update["$set"] = applyComplexChanges(item.PendingChanges, now)
+		}
+		if err := s.complexes.Update(ctx, id, update); err != nil {
+			return Complex{}, err
+		}
+		return s.complexes.FindByID(ctx, id)
+	}
+
+	if err := s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": status, "updated_at": now}}); err != nil {
 		return Complex{}, err
 	}
 	return s.complexes.FindByID(ctx, id)
+}
+
+// applyComplexChanges converts staged changes into a $set document for the
+// live fields.
+func applyComplexChanges(ch *ComplexChanges, now time.Time) bson.M {
+	set := bson.M{"updated_at": now}
+	if ch.Name != "" {
+		set["name"] = ch.Name
+	}
+	if ch.Description != "" {
+		set["description"] = ch.Description
+	}
+	if ch.City != "" {
+		set["city"] = ch.City
+	}
+	if ch.Neighborhood != "" {
+		set["neighborhood"] = ch.Neighborhood
+	}
+	if ch.Address != "" {
+		set["address"] = ch.Address
+	}
+	if ch.ContactPhone != "" {
+		set["contact_phone"] = ch.ContactPhone
+	}
+	if ch.Images != nil {
+		set["images"] = ch.Images
+	}
+	if ch.Amenities != nil {
+		set["amenities"] = ch.Amenities
+	}
+	if ch.Rules != nil {
+		set["rules"] = ch.Rules
+	}
+	if ch.Location != nil {
+		set["location"] = *ch.Location
+	}
+	return set
 }
 
 func (s *Service) listHalls(ctx context.Context, complexID string, activeOnly bool, approvedOnly bool) ([]Hall, error) {

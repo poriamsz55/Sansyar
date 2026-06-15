@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   Building2,
-  Warehouse,
   CalendarClock,
   Ticket,
   LogOut,
@@ -19,16 +18,14 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/owner/dashboard", label: "داشبورد", icon: LayoutDashboard },
-  { to: "/owner/complexes", label: "مجموعه‌ها", icon: Building2 },
-  { to: "/owner/halls", label: "سالن‌ها", icon: Warehouse },
+  { to: "/owner/venues", label: "مجموعه‌ها و سالن‌ها", icon: Building2 },
   { to: "/owner/slots", label: "سانس‌ها", icon: CalendarClock },
   { to: "/owner/reservations", label: "رزروها", icon: Ticket },
 ];
 
 const titles = {
   "/owner/dashboard": "داشبورد مجموعه",
-  "/owner/complexes": "مجموعه‌های من",
-  "/owner/halls": "سالن‌های من",
+  "/owner/venues": "مجموعه‌ها و سالن‌ها",
   "/owner/slots": "مدیریت سانس‌ها",
   "/owner/reservations": "رزروهای مجموعه",
 };

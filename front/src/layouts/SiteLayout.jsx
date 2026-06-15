@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, CalendarCheck, LogIn, LogOut, User } from "lucide-react";
+import { Menu, X, CalendarCheck, LogIn, LogOut, User, LayoutDashboard } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,15 @@ function NavItem({ to, label, end, onClick }) {
 
 export default function SiteLayout() {
   const [open, setOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, isSuperAdmin, isVenueOwner } = useAuth();
   const navigate = useNavigate();
+
+  // Way back into the management panels — only rendered for admin roles.
+  const panel = isSuperAdmin
+    ? { to: "/platform/dashboard", label: "پنل مدیریت" }
+    : isVenueOwner
+      ? { to: "/owner/dashboard", label: "پنل مالک مجموعه" }
+      : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -54,6 +61,12 @@ export default function SiteLayout() {
           <div className="hidden items-center gap-2 md:flex">
             {isAuthenticated ? (
               <>
+                {panel && (
+                  <Button variant="outline" onClick={() => navigate(panel.to)}>
+                    <LayoutDashboard className="h-4 w-4" />
+                    {panel.label}
+                  </Button>
+                )}
                 <span className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm font-medium">
                   <User className="h-4 w-4 text-primary" />
                   {user.full_name}
@@ -91,7 +104,18 @@ export default function SiteLayout() {
                 {navItems.map((item) => (
                   <NavItem key={item.to} {...item} onClick={() => setOpen(false)} />
                 ))}
-                <div className="mt-2 border-t border-border pt-3">
+                <div className="mt-2 space-y-2 border-t border-border pt-3">
+                  {isAuthenticated && panel && (
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        navigate(panel.to);
+                        setOpen(false);
+                      }}
+                    >
+                      <LayoutDashboard className="h-4 w-4" /> {panel.label}
+                    </Button>
+                  )}
                   {isAuthenticated ? (
                     <Button
                       variant="outline"

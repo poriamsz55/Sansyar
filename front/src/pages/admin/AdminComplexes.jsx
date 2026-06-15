@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
-import { Plus, MapPin, Building2, Star, Pencil, Trash2, Check, X, Globe, GlobeLock } from "lucide-react";
+import {
+  Plus,
+  MapPin,
+  Building2,
+  Star,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Globe,
+  GlobeLock,
+  PowerOff,
+  RotateCcw,
+} from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +24,9 @@ import { Dialog } from "@/components/ui/dialog";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
-import { ImageUpload } from "@/components/ImageUpload";
+import { ImageUpload, BannerUpload, splitImages, joinImages } from "@/components/ImageUpload";
+import { MapPicker } from "@/components/MapPicker";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -27,7 +42,13 @@ import {
   publishComplex,
   unpublishComplex,
 } from "@/api/endpoints";
-import { CITIES, AMENITIES } from "@/lib/constants";
+import {
+  CITIES,
+  AMENITIES,
+  complexDisplayStatus,
+  complexModerated,
+  mergePendingChanges,
+} from "@/lib/constants";
 import { toFa } from "@/lib/utils";
 
 const empty = {
@@ -39,7 +60,8 @@ const empty = {
   contact_phone: "",
   lat: 35.6892,
   lng: 51.389,
-  images: [],
+  banner: "",
+  gallery: [],
   amenities: [],
   rules: [],
 };
@@ -54,6 +76,7 @@ export default function AdminComplexes() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState(null);
 
   async function load() {
     setError(null);
@@ -80,18 +103,19 @@ export default function AdminComplexes() {
 
   function openEdit(c) {
     setEditing(c);
+    const src = mergePendingChanges(c);
     setForm({
-      name: c.name || "",
-      city: c.city || CITIES[0],
-      neighborhood: c.neighborhood || "",
-      address: c.address || "",
-      description: c.description || "",
-      contact_phone: c.contact_phone || "",
-      lat: c.location?.coordinates?.[1] ?? 35.6892,
-      lng: c.location?.coordinates?.[0] ?? 51.389,
-      images: c.images || [],
-      amenities: c.amenities || [],
-      rules: c.rules || [],
+      name: src.name || "",
+      city: src.city || CITIES[0],
+      neighborhood: src.neighborhood || "",
+      address: src.address || "",
+      description: src.description || "",
+      contact_phone: src.contact_phone || "",
+      lat: src.location?.coordinates?.[1] ?? 35.6892,
+      lng: src.location?.coordinates?.[0] ?? 51.389,
+      ...splitImages(src.images),
+      amenities: src.amenities || [],
+      rules: src.rules || [],
     });
     setOpen(true);
   }
@@ -113,15 +137,21 @@ export default function AdminComplexes() {
     e.preventDefault();
     setSaving(true);
     try {
+      const { banner, gallery, ...rest } = form;
       const payload = {
-        ...form,
+        ...rest,
         lat: Number(form.lat),
         lng: Number(form.lng),
+        images: joinImages(banner, gallery),
       };
       if (editing) {
         if (isSuperAdmin) await adminUpdateComplex(editing.id, payload);
         else await updateComplex(editing.id, payload);
-        toast("مجموعه به‌روزرسانی شد");
+        if (["approved", "published"].includes(editing.status)) {
+          toast("تغییرات ثبت شد و پس از تأیید اعمال می‌شود؛ تا آن زمان نسخه قبلی فعال می‌ماند");
+        } else {
+          toast("مجموعه به‌روزرسانی شد");
+        }
       } else {
         await createComplex({ ...payload, slug: `complex-${Date.now()}` });
         toast("مجموعه جدید ثبت شد");
@@ -136,23 +166,47 @@ export default function AdminComplexes() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm("این مجموعه غیرفعال شود؟")) return;
+  function askDelete(c) {
+    const moderated = complexModerated(c);
+    setConfirm({
+      title: moderated ? "غیرفعال‌سازی مجموعه" : "حذف کامل مجموعه",
+      message: moderated
+        ? `مجموعه‌های تأییدشده برای حفظ سوابق رزرو قابل حذف کامل نیستند. «${c.name}» فقط غیرفعال و از سایت برداشته می‌شود.`
+        : `مجموعه «${c.name}» هنوز تأیید نشده و به همراه سالن‌ها و سانس‌هایش برای همیشه حذف می‌شود. این عملیات قابل بازگشت نیست.`,
+      actionLabel: moderated ? "غیرفعال کن" : "حذف کامل",
+      onConfirm: async () => {
+        try {
+          if (isSuperAdmin) await adminDeleteComplex(c.id);
+          else await deleteComplex(c.id);
+          toast(moderated ? "مجموعه غیرفعال شد" : "مجموعه برای همیشه حذف شد");
+          load();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      },
+    });
+  }
+
+  async function handleApprove(c, approved) {
+    const reviewingChanges = !!c.pending_changes;
     try {
-      if (isSuperAdmin) await adminDeleteComplex(id);
-      else await deleteComplex(id);
-      toast("مجموعه غیرفعال شد");
+      if (approved) await approveComplex(c.id);
+      else await rejectComplex(c.id);
+      if (reviewingChanges) {
+        toast(approved ? "تغییرات تأیید و اعمال شد" : "تغییرات رد شد و نسخه قبلی فعال ماند");
+      } else {
+        toast(approved ? "مجموعه تأیید شد" : "مجموعه رد شد");
+      }
       load();
     } catch (err) {
       toast(err.message, "error");
     }
   }
 
-  async function handleApprove(id, approved) {
+  async function handleReactivate(c) {
     try {
-      if (approved) await approveComplex(id);
-      else await rejectComplex(id);
-      toast(approved ? "مجموعه تأیید شد" : "مجموعه رد شد");
+      await approveComplex(c.id);
+      toast("مجموعه دوباره فعال شد");
       load();
     } catch (err) {
       toast(err.message, "error");
@@ -239,34 +293,62 @@ export default function AdminComplexes() {
                     </TD>
                     <TD>{toFa(c.available_slot_count || 0)}</TD>
                     <TD>
-                      <StatusBadge kind="complex" status={c.status} />
+                      <StatusBadge kind="complex" status={complexDisplayStatus(c)} />
                     </TD>
                     <TD>
                       <div className="flex flex-wrap items-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(c)} title="ویرایش">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)} title="حذف">
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
-                        {isSuperAdmin && c.status === "pending_approval" && (
+                        {complexModerated(c) ? (
+                          c.status !== "suspended" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => askDelete(c)}
+                              title="غیرفعال‌سازی — مجموعه‌های تأییدشده قابل حذف کامل نیستند"
+                            >
+                              <PowerOff className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          )
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => askDelete(c)} title="حذف کامل">
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        )}
+                        {isSuperAdmin && (c.status === "pending_approval" || c.pending_changes) && (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => handleApprove(c.id, true)} title="تأیید">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleApprove(c, true)}
+                              title={c.pending_changes ? "تأیید تغییرات" : "تأیید"}
+                            >
                               <Check className="h-3.5 w-3.5 text-success" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleApprove(c.id, false)} title="رد">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleApprove(c, false)}
+                              title={c.pending_changes ? "رد تغییرات" : "رد"}
+                            >
                               <X className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </>
                         )}
-                        {isSuperAdmin && c.status === "approved" && (
+                        {isSuperAdmin && c.status === "approved" && !c.pending_changes && (
                           <Button variant="ghost" size="sm" onClick={() => handlePublish(c.id, true)} title="انتشار">
                             <Globe className="h-3.5 w-3.5 text-primary" />
                           </Button>
                         )}
-                        {isSuperAdmin && c.status === "published" && (
+                        {isSuperAdmin && c.status === "published" && !c.pending_changes && (
                           <Button variant="ghost" size="sm" onClick={() => handlePublish(c.id, false)} title="لغو انتشار">
                             <GlobeLock className="h-3.5 w-3.5 text-muted-foreground" />
+                          </Button>
+                        )}
+                        {isSuperAdmin && c.status === "suspended" && (
+                          <Button variant="ghost" size="sm" onClick={() => handleReactivate(c)} title="فعال‌سازی مجدد">
+                            <RotateCcw className="h-3.5 w-3.5 text-success" />
                           </Button>
                         )}
                       </div>
@@ -282,17 +364,28 @@ export default function AdminComplexes() {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
+        wide
         title={editing ? "ویرایش مجموعه" : "ثبت مجموعه جدید"}
         description="اطلاعات مجموعه ورزشی را وارد کن."
       >
         <form onSubmit={submit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-1.5">
-            <Label>تصاویر</Label>
-            <ImageUpload
-              value={form.images}
-              onChange={(images) => set("images", images)}
+            <Label>تصویر بنر (اصلی)</Label>
+            <BannerUpload
+              value={form.banner}
+              onChange={(banner) => set("banner", banner)}
               folder="complexes"
               admin={isSuperAdmin}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>گالری تصاویر</Label>
+            <ImageUpload
+              value={form.gallery}
+              onChange={(gallery) => set("gallery", gallery)}
+              folder="complexes"
+              admin={isSuperAdmin}
+              disabled={!form.banner}
             />
           </div>
           <div className="space-y-1.5">
@@ -341,25 +434,12 @@ export default function AdminComplexes() {
               placeholder="02100000000"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>عرض جغرافیایی</Label>
-              <Input
-                type="number"
-                step="any"
-                value={form.lat}
-                onChange={(e) => set("lat", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>طول جغرافیایی</Label>
-              <Input
-                type="number"
-                step="any"
-                value={form.lng}
-                onChange={(e) => set("lng", e.target.value)}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label>موقعیت روی نقشه</Label>
+            <MapPicker
+              value={{ lat: form.lat, lng: form.lng }}
+              onChange={({ lat, lng }) => setForm((f) => ({ ...f, lat, lng }))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>امکانات</Label>
@@ -400,6 +480,8 @@ export default function AdminComplexes() {
           </div>
         </form>
       </Dialog>
+
+      <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
 }

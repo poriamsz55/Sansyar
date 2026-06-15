@@ -34,6 +34,23 @@ type (
 		PartialRefundPct   int `json:"partial_refund_percent" bson:"partial_refund_percent"`
 	}
 
+	// ComplexChanges is a staged edit to a complex that already passed
+	// moderation. The live fields keep serving the public site until a super
+	// admin approves the changes; rejecting discards them.
+	ComplexChanges struct {
+		Name         string        `json:"name,omitempty" bson:"name,omitempty"`
+		Description  string        `json:"description,omitempty" bson:"description,omitempty"`
+		City         string        `json:"city,omitempty" bson:"city,omitempty"`
+		Neighborhood string        `json:"neighborhood,omitempty" bson:"neighborhood,omitempty"`
+		Address      string        `json:"address,omitempty" bson:"address,omitempty"`
+		Location     *GeoJSONPoint `json:"location,omitempty" bson:"location,omitempty"`
+		ContactPhone string        `json:"contact_phone,omitempty" bson:"contact_phone,omitempty"`
+		Images       []string      `json:"images,omitempty" bson:"images,omitempty"`
+		Amenities    []string      `json:"amenities,omitempty" bson:"amenities,omitempty"`
+		Rules        []string      `json:"rules,omitempty" bson:"rules,omitempty"`
+		SubmittedAt  time.Time     `json:"submitted_at" bson:"submitted_at"`
+	}
+
 	Complex struct {
 		ID                 string             `json:"id" bson:"_id"`
 		OwnerID            string             `json:"owner_id" bson:"owner_id"`
@@ -50,6 +67,7 @@ type (
 		Rules              []string           `json:"rules" bson:"rules"`
 		CancellationPolicy CancellationPolicy `json:"cancellation_policy" bson:"cancellation_policy"`
 		Status             string             `json:"status" bson:"status"`
+		PendingChanges     *ComplexChanges    `json:"pending_changes,omitempty" bson:"pending_changes,omitempty"`
 		RatingAvg          float64            `json:"rating_avg" bson:"rating_avg"`
 		RatingCount        int                `json:"rating_count" bson:"rating_count"`
 		CreatedAt          time.Time          `json:"created_at" bson:"created_at"`
