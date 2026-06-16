@@ -6,11 +6,19 @@ export const API_BASE_URL =
 const TOKEN_KEY = "sansyar.access_token";
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 }
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+
+/**
+ * Persist the access token. With `remember` the token survives a browser
+ * restart (localStorage); otherwise it lives only for the tab session
+ * (sessionStorage). Passing a falsy token clears both stores (logout).
+ */
+export function setToken(token, { remember = true } = {}) {
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  if (!token) return;
+  (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
 }
 
 export async function apiFetch(path, { method = "GET", body, headers } = {}) {

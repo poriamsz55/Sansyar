@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,21 +73,51 @@ func (s *Service) register(ctx context.Context, req RegisterRequest) (AuthRespon
 	return AuthResponse{AccessToken: token, TokenType: "Bearer", User: user}, nil
 }
 
-func (s *Service) login(ctx context.Context, req LoginRequest) (AuthResponse, error) {
-	user, err := s.users.FindOne(ctx, bson.M{"phone": req.Phone})
-	if errors.Is(err, database.ErrNotFound) {
-		return AuthResponse{}, errormap.ErrUnauthorized
+// registerOwner is self-service signup for a Vendor Admin (venue owner). It
+// rejects duplicate phone or national code with distinct, user-facing messages
+// and stores only a bcrypt password hash.
+func (s *Service) registerOwner(ctx context.Context, req RegisterOwnerRequest) (AuthResponse, error) {
+	phone := strings.TrimSpace(req.Phone)
+	nationalID := strings.TrimSpace(req.NationalID)
+
+	if _, err := s.users.FindOne(ctx, bson.M{"phone": phone}); err == nil {
+		return AuthResponse{}, fmt.Errorf("%w: this mobile number is already registered", errormap.ErrConflict)
+	} else if !errors.Is(err, database.ErrNotFound) {
+		return AuthResponse{}, err
 	}
+	if _, err := s.users.FindOne(ctx, bson.M{"national_id": nationalID}); err == nil {
+		return AuthResponse{}, fmt.Errorf("%w: this national code is already registered", errormap.ErrConflict)
+	} else if !errors.Is(err, database.ErrNotFound) {
+		return AuthResponse{}, err
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return AuthResponse{}, err
 	}
-	// Password login is for staff/owner/admin accounts. Customers sign in via
-	// SMS OTP (see requestOTP/verifyOTP).
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		return AuthResponse{}, errormap.ErrUnauthorized
+
+	now := time.Now().UTC()
+	firstName := strings.TrimSpace(req.FirstName)
+	lastName := strings.TrimSpace(req.LastName)
+	user := User{
+		ID:           uuid.NewString(),
+		FullName:     strings.TrimSpace(firstName + " " + lastName),
+		FirstName:    firstName,
+		LastName:     lastName,
+		NationalID:   nationalID,
+		Address:      strings.TrimSpace(req.Address),
+		Phone:        phone,
+		PasswordHash: string(passwordHash),
+		Role:         RoleVenueOwner,
+		Status:       UserStatusActive,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
-	if user.Status != UserStatusActive {
-		return AuthResponse{}, errormap.ErrForbidden
+	if err := s.users.Create(ctx, user); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return AuthResponse{}, fmt.Errorf("%w: mobile number or national code already registered", errormap.ErrConflict)
+		}
+		return AuthResponse{}, err
 	}
 
 	token, err := sansyarjwt.Issue(s.cfg.JWTSecret, s.cfg.AccessTokenTTL, user.ID, user.Role)
@@ -94,6 +125,60 @@ func (s *Service) login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		return AuthResponse{}, err
 	}
 	return AuthResponse{AccessToken: token, TokenType: "Bearer", User: user}, nil
+}
+
+func (s *Service) login(ctx context.Context, req LoginRequest) (AuthResponse, error) {
+	user, err := s.users.FindOne(ctx, bson.M{"phone": strings.TrimSpace(req.Phone)})
+	if errors.Is(err, database.ErrNotFound) {
+		return AuthResponse{}, errormap.ErrUnauthorized
+	}
+	if err != nil {
+		return AuthResponse{}, err
+	}
+
+	now := time.Now().UTC()
+	if user.LockedUntil != nil && now.Before(*user.LockedUntil) {
+		mins := int(user.LockedUntil.Sub(now).Minutes()) + 1
+		return AuthResponse{}, fmt.Errorf("%w: too many failed attempts, account locked for %d minutes", errormap.ErrForbidden, mins)
+	}
+
+	// Password login is for staff/owner/admin accounts. Customers sign in via
+	// SMS OTP (see requestOTP/verifyOTP).
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		s.registerFailedLogin(ctx, user, now)
+		return AuthResponse{}, errormap.ErrUnauthorized
+	}
+	if user.Status != UserStatusActive {
+		return AuthResponse{}, errormap.ErrForbidden
+	}
+
+	// Successful login clears any brute-force counters.
+	if user.FailedLogins > 0 || user.LockedUntil != nil {
+		_ = s.users.Update(ctx, user.ID, bson.M{"$set": bson.M{"failed_logins": 0}, "$unset": bson.M{"locked_until": ""}})
+	}
+
+	ttl := s.cfg.AccessTokenTTL
+	if req.RememberMe {
+		ttl = s.cfg.RememberMeTokenTTL
+	}
+	token, err := sansyarjwt.Issue(s.cfg.JWTSecret, ttl, user.ID, user.Role)
+	if err != nil {
+		return AuthResponse{}, err
+	}
+	return AuthResponse{AccessToken: token, TokenType: "Bearer", User: user}, nil
+}
+
+// registerFailedLogin increments the brute-force counter and locks the account
+// once it crosses the configured threshold.
+func (s *Service) registerFailedLogin(ctx context.Context, user User, now time.Time) {
+	attempts := user.FailedLogins + 1
+	set := bson.M{"failed_logins": attempts, "updated_at": now}
+	if attempts >= s.cfg.LoginMaxAttempts {
+		lockUntil := now.Add(s.cfg.LoginLockDuration)
+		set["locked_until"] = lockUntil
+		set["failed_logins"] = 0
+	}
+	_ = s.users.Update(ctx, user.ID, bson.M{"$set": set})
 }
 
 func (s *Service) me(ctx context.Context, userID string) (User, error) {

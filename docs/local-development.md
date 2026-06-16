@@ -22,8 +22,10 @@ Uploaded images are served from `http://localhost:9000/sansyar/...`
 Seed login accounts all use `Password123!`:
 
 - Super admin: `09000000000`
-- Venue owner: `09120000000`
-- Customer: `09350000000`
+- Venue owner (Vendor Admin): `09120000000` — signs in at `/owner/login` with phone + password
+- Customer: `09350000000` — signs in at `/login` with an SMS one-time code (demo phone accepts any code)
+
+New venue owners can self-register at `/owner/register` and recover a password at `/owner/forgot-password`. All 31 Iranian provinces are seeded into the `provinces` collection on every boot.
 
 ## Run web apps
 

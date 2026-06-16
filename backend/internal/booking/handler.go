@@ -77,7 +77,11 @@ func (h *Handler) AdminBookings(c echo.Context) error {
 }
 
 func (h *Handler) AdminCancel(c echo.Context) error {
-	item, err := h.service.adminCancel(c.Request().Context(), c.Param("id"))
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind(&body)
+	item, err := h.service.adminCancel(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), body.Reason)
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
@@ -85,7 +89,7 @@ func (h *Handler) AdminCancel(c echo.Context) error {
 }
 
 func (h *Handler) AdminConfirm(c echo.Context) error {
-	item, err := h.service.adminConfirm(c.Request().Context(), c.Param("id"))
+	item, err := h.service.adminConfirm(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"))
 	if err != nil {
 		return errormap.JSON(c, err)
 	}

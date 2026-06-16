@@ -2,7 +2,7 @@
 
 import { apiFetch, setToken } from "./client";
 import * as mock from "../data/mock";
-import { SPORTS } from "../lib/constants";
+import { SPORTS, IRAN_PROVINCES } from "../lib/constants";
 
 const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? "false") === "true";
 
@@ -41,13 +41,13 @@ function normalizeComplexList(data) {
 
 // ---- Auth -----------------------------------------------------------------
 
-export async function login({ phone, password }) {
+export async function login({ phone, password, rememberMe = true }) {
   if (!USE_MOCK) {
     const data = await apiFetch("/auth/login", {
       method: "POST",
-      body: { phone, password },
+      body: { phone, password, remember_me: rememberMe },
     });
-    setToken(data.access_token);
+    setToken(data.access_token, { remember: rememberMe });
     return data.user;
   }
   await delay();
@@ -64,6 +64,46 @@ export async function login({ phone, password }) {
   };
   setToken("mock-token");
   return { ...user, phone };
+}
+
+// Vendor Admin (venue owner) self-service registration.
+export async function registerOwner(payload) {
+  if (!USE_MOCK) {
+    const data = await apiFetch("/auth/owner/register", {
+      method: "POST",
+      body: payload,
+    });
+    setToken(data.access_token, { remember: true });
+    return data.user;
+  }
+  await delay();
+  setToken("mock-token");
+  return {
+    id: "user-owner",
+    full_name: `${payload.first_name} ${payload.last_name}`,
+    phone: payload.phone,
+    role: "venue_owner",
+  };
+}
+
+// Owner password recovery: request a reset code, then submit it with a new password.
+export async function forgotPassword(phone) {
+  if (!USE_MOCK) {
+    return apiFetch("/auth/password/forgot", { method: "POST", body: { phone } });
+  }
+  await delay();
+  return { message: "reset code sent", expires_in: 120 };
+}
+
+export async function resetPassword({ phone, code, newPassword }) {
+  if (!USE_MOCK) {
+    return apiFetch("/auth/password/reset", {
+      method: "POST",
+      body: { phone, code, new_password: newPassword },
+    });
+  }
+  await delay();
+  return {};
 }
 
 // Customer OTP login: request a code, then verify it to obtain a session.
@@ -93,6 +133,18 @@ export async function listSports() {
   if (!USE_MOCK) return apiFetch("/sports");
   await delay(150);
   return SPORTS;
+}
+
+let provincesCache = null;
+export async function listProvinces() {
+  if (provincesCache) return provincesCache;
+  if (!USE_MOCK) {
+    provincesCache = await apiFetch("/provinces");
+    return provincesCache;
+  }
+  await delay(100);
+  provincesCache = IRAN_PROVINCES.map((name, i) => ({ id: `p-${i}`, name }));
+  return provincesCache;
 }
 
 export async function listComplexes(filters = {}) {
@@ -314,12 +366,15 @@ export async function approveComplex(id) {
   return c;
 }
 
-export async function rejectComplex(id) {
+export async function rejectComplex(id, reason = "") {
   if (!USE_MOCK)
-    return apiFetch(`/admin/complexes/${id}/reject`, { method: "POST" });
+    return apiFetch(`/admin/complexes/${id}/reject`, { method: "POST", body: { reason } });
   await delay();
   const c = store.complexes.find((x) => x.id === id);
-  if (c) c.status = "rejected";
+  if (c) {
+    c.status = "rejected";
+    c.rejection_reason = reason;
+  }
   return c;
 }
 
@@ -376,11 +431,14 @@ export async function approveHall(id) {
   return h;
 }
 
-export async function rejectHall(id) {
-  if (!USE_MOCK) return apiFetch(`/admin/halls/${id}/reject`, { method: "POST" });
+export async function rejectHall(id, reason = "") {
+  if (!USE_MOCK) return apiFetch(`/admin/halls/${id}/reject`, { method: "POST", body: { reason } });
   await delay();
   const h = store.halls.find((x) => x.id === id);
-  if (h) h.status = "rejected";
+  if (h) {
+    h.status = "rejected";
+    h.rejection_reason = reason;
+  }
   return h;
 }
 
@@ -486,16 +544,22 @@ export async function deleteHall(id) {
 // ---- Slots ----------------------------------------------------------------
 
 export async function listAllBookings() {
-  if (!USE_MOCK) return apiFetch("/admin/bookings");
+  if (!USE_MOCK) {
+    const res = await apiFetch("/admin/bookings?limit=2000");
+    return Array.isArray(res) ? res : res?.items ?? [];
+  }
   await delay();
   return store.bookings;
 }
 
-export async function adminCancelBooking(id) {
-  if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}/cancel`, { method: "POST" });
+export async function adminCancelBooking(id, reason = "") {
+  if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}/cancel`, { method: "POST", body: { reason } });
   await delay();
   const b = store.bookings.find((x) => x.id === id);
-  if (b) b.status = "cancelled_by_owner";
+  if (b) {
+    b.status = "cancelled_by_owner";
+    b.cancellation_reason = reason;
+  }
   return b;
 }
 
@@ -534,6 +598,97 @@ export async function setSlotStatus(id, status) {
   return slot;
 }
 
+// ---- Session management (owner calendar) ----------------------------------
+
+/** Fetch owner sessions in [from, to) (ISO strings), optionally for one hall. */
+export async function listSessions({ hallId, complexId, from, to } = {}) {
+  if (!USE_MOCK) {
+    const params = new URLSearchParams();
+    if (hallId) params.set("hall_id", hallId);
+    if (complexId) params.set("complex_id", complexId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return apiFetch(`/owner/sessions${qs ? `?${qs}` : ""}`);
+  }
+  await delay(200);
+  return store.slots
+    .filter((s) => (hallId ? s.hall_id === hallId : true))
+    .map((s) => ({ ...s, fill: "available", remaining_spots: s.capacity || 1, revenue_estimate: 0 }));
+}
+
+export async function createSession(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions", { method: "POST", body: payload });
+  return createSlot(payload);
+}
+
+/** Partial edit of one session (price, capacity, drag-resized time, status…). */
+export async function updateSession(id, patch) {
+  if (!USE_MOCK) return apiFetch(`/owner/sessions/${id}`, { method: "PATCH", body: patch });
+  await delay(120);
+  const slot = store.slots.find((s) => s.id === id);
+  if (slot) Object.assign(slot, patch);
+  return slot;
+}
+
+/** Permanently delete a session (rejected by the server if it has bookings). */
+export async function deleteSession(id) {
+  if (!USE_MOCK) return apiFetch(`/owner/sessions/${id}`, { method: "DELETE" });
+  await delay(120);
+  store.slots = store.slots.filter((s) => s.id !== id);
+  return { ok: true };
+}
+
+export async function generateSessions(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions/generate", { method: "POST", body: payload });
+  await delay();
+  return { created: 0, skipped: 0, message: "mock" };
+}
+
+export async function copyDay(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions/copy-day", { method: "POST", body: payload });
+  await delay();
+  return { created: 0, message: "mock" };
+}
+
+export async function duplicateWeek(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions/duplicate-week", { method: "POST", body: payload });
+  await delay();
+  return { created: 0, message: "mock" };
+}
+
+export async function bulkUpdateSessions(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions/bulk-update", { method: "POST", body: payload });
+  await delay();
+  return { updated: 0, message: "mock" };
+}
+
+export async function blockRange(payload) {
+  if (!USE_MOCK) return apiFetch("/owner/sessions/block-range", { method: "POST", body: payload });
+  await delay();
+  return { updated: 0, message: "mock" };
+}
+
+/** Admin/owner manual (walk-in) booking against a session. */
+export async function manualBooking({ slotId, paymentType = "full_in_person" }) {
+  if (!USE_MOCK)
+    return apiFetch("/owner/bookings/manual", {
+      method: "POST",
+      body: { slot_id: slotId, payment_type: paymentType },
+    });
+  await delay();
+  return { id: uid("booking"), slot_id: slotId };
+}
+
+export async function listSessionAudit(hallId) {
+  if (!USE_MOCK) {
+    const qs = hallId ? `?hall_id=${hallId}` : "";
+    return apiFetch(`/owner/sessions/audit${qs}`);
+  }
+  await delay();
+  return [];
+}
+
 /** Build complex/hall lookup maps for booking display screens. */
 export async function loadVenueLookups({ admin = false, owner = false } = {}) {
   if (USE_MOCK) {
@@ -563,6 +718,68 @@ export async function loadVenueLookups({ admin = false, owner = false } = {}) {
     complexMap: Object.fromEntries(complexes.map((c) => [c.id, c])),
     hallMap: Object.fromEntries(halls.map((h) => [h.id, h])),
   };
+}
+
+// ---- Admin aggregation (super admin dashboard) ----------------------------
+
+export async function adminListVenues() {
+  if (!USE_MOCK) return apiFetch("/admin/venues");
+  await delay();
+  return store.complexes.map((c) => ({
+    ...c,
+    owner_name: "مالک نمونه",
+    halls: store.halls.filter((h) => h.complex_id === c.id),
+    hall_count: store.halls.filter((h) => h.complex_id === c.id).length,
+    slot_count: store.slots.filter((s) => s.complex_id === c.id).length,
+    booking_count: store.bookings.filter((b) => b.complex_id === c.id).length,
+  }));
+}
+
+export async function adminGetVenue(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/venues/${id}`);
+  return (await adminListVenues()).find((v) => v.id === id) || null;
+}
+
+export async function adminListOwners() {
+  if (!USE_MOCK) return apiFetch("/admin/owners");
+  return listUsers("venue_owner");
+}
+
+export async function adminGetOwner(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/owners/${id}`);
+  await delay();
+  return { id, venues: [], stats: {}, bookings: [] };
+}
+
+export async function adminListCustomers() {
+  if (!USE_MOCK) return apiFetch("/admin/customers");
+  return listUsers("customer");
+}
+
+export async function adminGetCustomer(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/customers/${id}`);
+  await delay();
+  return { id, bookings: [], cancellations: [], stats: {}, favorite_venues: [], favorite_sports: [] };
+}
+
+/** Paginated, filterable bookings for admin. Returns { items, total, page, limit }. */
+export async function adminListBookings(filters = {}) {
+  if (!USE_MOCK) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return apiFetch(`/admin/bookings${qs ? `?${qs}` : ""}`);
+  }
+  await delay();
+  return { items: store.bookings, total: store.bookings.length, page: 1, limit: 20 };
+}
+
+export async function adminGetBooking(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}`);
+  await delay();
+  return store.bookings.find((b) => b.id === id) || null;
 }
 
 /** @deprecated Use loadVenueLookups() instead when USE_MOCK=false */

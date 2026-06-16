@@ -15,9 +15,12 @@ type Config struct {
 	Port           string
 	MongoURI       string
 	MongoDatabase  string
-	JWTSecret      string
-	AccessTokenTTL time.Duration
-	CORSOrigins    []string
+	JWTSecret          string
+	AccessTokenTTL     time.Duration
+	RememberMeTokenTTL time.Duration
+	LoginMaxAttempts   int
+	LoginLockDuration  time.Duration
+	CORSOrigins        []string
 	SeedData       bool
 	LogLevel       string
 	MinIOEndpoint  string
@@ -47,9 +50,12 @@ func Load() *Config {
 		Port:           env("PORT", "8080"),
 		MongoURI:       env("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDatabase:  env("MONGO_DATABASE", "sansyar"),
-		JWTSecret:      env("JWT_SECRET", "change-me-in-production"),
-		AccessTokenTTL: durationEnv("ACCESS_TOKEN_TTL", 24*time.Hour),
-		CORSOrigins:    listEnv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174"),
+		JWTSecret:          env("JWT_SECRET", "change-me-in-production"),
+		AccessTokenTTL:     durationEnv("ACCESS_TOKEN_TTL", 24*time.Hour),
+		RememberMeTokenTTL: durationEnv("REMEMBER_ME_TOKEN_TTL", 720*time.Hour),
+		LoginMaxAttempts:   intEnv("LOGIN_MAX_ATTEMPTS", 5),
+		LoginLockDuration:  durationEnv("LOGIN_LOCK_DURATION", 15*time.Minute),
+		CORSOrigins:        listEnv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174"),
 		SeedData:       boolEnv("SEED_DATA", false),
 		LogLevel:       env("LOG_LEVEL", "info"),
 		MinIOEndpoint:  env("MINIO_ENDPOINT", "localhost:9000"),

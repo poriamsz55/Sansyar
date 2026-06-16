@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { requestOtp } from "@/api/endpoints";
 import { OTP_LENGTH } from "@/lib/constants";
+import { normalizePhoneInput } from "@/lib/validation";
 import { toFa } from "@/lib/utils";
 
 export default function Login() {
@@ -134,7 +135,7 @@ export default function Login() {
                       dir="ltr"
                       placeholder="09123456789"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(normalizePhoneInput(e.target.value))}
                       className="pr-11 text-center"
                     />
                   </div>

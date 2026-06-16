@@ -6,9 +6,11 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
+	"sansyar/backend/internal/admin"
 	"sansyar/backend/internal/auth"
 	"sansyar/backend/internal/booking"
 	"sansyar/backend/internal/finance"
+	"sansyar/backend/internal/location"
 	"sansyar/backend/internal/payment"
 	"sansyar/backend/internal/review"
 	"sansyar/backend/internal/sport"
@@ -27,9 +29,11 @@ type App struct {
 	db     *mongo.Database
 	logger *slog.Logger
 
-	authHandler    *auth.Handler
-	sportHandler   *sport.Handler
-	venueHandler   *venue.Handler
+	authHandler     *auth.Handler
+	sportHandler    *sport.Handler
+	locationHandler *location.Handler
+	adminHandler    *admin.Handler
+	venueHandler    *venue.Handler
 	bookingHandler *booking.Handler
 	paymentHandler *payment.Handler
 	walletHandler  *wallet.Handler
@@ -50,9 +54,11 @@ func NewApp(ctx context.Context) (*App, error) {
 	userRepo := database.NewRepository[auth.User](database.GetCollection(db, "users"))
 	otpRepo := database.NewRepository[auth.OTPCode](database.GetCollection(db, "otp_codes"))
 	sportRepo := database.NewRepository[sport.Sport](database.GetCollection(db, "sports"))
+	provinceRepo := database.NewRepository[location.Province](database.GetCollection(db, "provinces"))
 	complexRepo := database.NewRepository[venue.Complex](database.GetCollection(db, "complexes"))
 	hallRepo := database.NewRepository[venue.Hall](database.GetCollection(db, "halls"))
 	slotRepo := database.NewRepository[venue.Slot](database.GetCollection(db, "time_slots"))
+	auditRepo := database.NewRepository[venue.ScheduleAudit](database.GetCollection(db, "audit_logs"))
 	bookingRepo := database.NewRepository[booking.Booking](database.GetCollection(db, "bookings"))
 	idempotencyRepo := database.NewRepository[booking.IdempotencyRecord](database.GetCollection(db, "idempotency_keys"))
 	paymentRepo := database.NewRepository[payment.Payment](database.GetCollection(db, "payments"))
@@ -72,7 +78,9 @@ func NewApp(ctx context.Context) (*App, error) {
 
 	authService := auth.NewService(userRepo, otpRepo, smsSender, cfg, log)
 	sportService := sport.NewService(sportRepo)
-	venueService := venue.NewService(complexRepo, hallRepo, slotRepo)
+	locationService := location.NewService(provinceRepo)
+	venueService := venue.NewService(complexRepo, hallRepo, slotRepo, auditRepo)
+	adminService := admin.NewService(userRepo, complexRepo, hallRepo, slotRepo, bookingRepo, paymentRepo, sportRepo)
 	bookingService := booking.NewService(bookingRepo, slotRepo, idempotencyRepo)
 
 	storageService, err := storage.NewService(cfg)
@@ -84,15 +92,22 @@ func NewApp(ctx context.Context) (*App, error) {
 		cfg:            cfg,
 		db:             db,
 		logger:         log,
-		authHandler:    auth.NewHandler(authService),
-		sportHandler:   sport.NewHandler(sportService),
-		venueHandler:   venue.NewHandler(venueService),
+		authHandler:     auth.NewHandler(authService),
+		sportHandler:    sport.NewHandler(sportService),
+		locationHandler: location.NewHandler(locationService),
+		adminHandler:    admin.NewHandler(adminService),
+		venueHandler:    venue.NewHandler(venueService),
 		bookingHandler: booking.NewHandler(bookingService, venueService),
 		paymentHandler: payment.NewHandler(paymentRepo),
 		walletHandler:  wallet.NewHandler(walletAccountRepo, walletTransactionRepo),
 		reviewHandler:  review.NewHandler(reviewRepo),
 		financeHandler: finance.NewHandler(),
 		uploadHandler:  upload.NewHandler(storageService),
+	}
+
+	// Provinces are reference data the location picker needs in every environment.
+	if err := seedProvinces(ctx, provinceRepo); err != nil {
+		return nil, err
 	}
 
 	if cfg.SeedData {

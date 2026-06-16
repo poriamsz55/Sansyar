@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   ShieldCheck,
   Building2,
-  Warehouse,
   Users,
   UserCircle,
   Ticket,
@@ -23,8 +22,7 @@ import { cn } from "@/lib/utils";
 const nav = [
   { to: "/platform/dashboard", label: "داشبورد", icon: LayoutDashboard },
   { to: "/platform/approvals", label: "تأییدها", icon: ShieldCheck },
-  { to: "/platform/complexes", label: "مجموعه‌ها", icon: Building2 },
-  { to: "/platform/halls", label: "سالن‌ها", icon: Warehouse },
+  { to: "/platform/venues", label: "مجموعه‌ها و سالن‌ها", icon: Building2 },
   { to: "/platform/owners", label: "مالکان", icon: Users },
   { to: "/platform/customers", label: "مشتریان", icon: UserCircle },
   { to: "/platform/bookings", label: "رزروها", icon: Ticket },
@@ -34,8 +32,7 @@ const nav = [
 const titles = {
   "/platform/dashboard": "داشبورد پلتفرم",
   "/platform/approvals": "صف تأیید",
-  "/platform/complexes": "همه مجموعه‌ها",
-  "/platform/halls": "همه سالن‌ها",
+  "/platform/venues": "مجموعه‌ها و سالن‌ها",
   "/platform/owners": "مدیریت مالکان",
   "/platform/customers": "مشتریان",
   "/platform/bookings": "همه رزروها",

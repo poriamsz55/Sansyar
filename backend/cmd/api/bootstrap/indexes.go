@@ -13,6 +13,8 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 		"users": {
 			{Keys: bson.D{{Key: "phone", Value: 1}}, Options: options.Index().SetUnique(true)},
 			{Keys: bson.D{{Key: "role", Value: 1}}},
+			// Vendor admins register with a unique national code; customers have none.
+			{Keys: bson.D{{Key: "national_id", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"national_id": bson.M{"$type": "string"}})},
 		},
 		"otp_codes": {
 			{Keys: bson.D{{Key: "expires_at", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
@@ -38,7 +40,9 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 		"bookings": {
 			{Keys: bson.D{{Key: "customer_id", Value: 1}, {Key: "status", Value: 1}, {Key: "starts_at", Value: -1}}},
 			{Keys: bson.D{{Key: "slot_id", Value: 1}, {Key: "status", Value: 1}}},
-			{Keys: bson.D{{Key: "slot_id", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"status": bson.M{"$in": bson.A{"pending", "awaiting_payment", "confirmed"}}})},
+			// Multi-capacity sessions accept many bookings, but a single customer
+			// may hold only one active booking per session.
+			{Keys: bson.D{{Key: "slot_id", Value: 1}, {Key: "customer_id", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"status": bson.M{"$in": bson.A{"pending", "awaiting_payment", "confirmed"}}})},
 		},
 		"idempotency_keys": {
 			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "key", Value: 1}}, Options: options.Index().SetUnique(true)},
@@ -55,6 +59,11 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "booking_id", Value: 1}}, Options: options.Index().SetUnique(true)},
 		},
 	}
+
+	// Drop the legacy single-capacity booking index so it does not block the new
+	// multi-capacity (slot_id + customer_id) uniqueness. Best effort: the index
+	// is absent on fresh databases.
+	_ = db.Collection("bookings").Indexes().DropOne(ctx, "slot_id_1")
 
 	for collection, models := range definitions {
 		if len(models) == 0 {

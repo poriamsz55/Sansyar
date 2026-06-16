@@ -135,6 +135,101 @@ func (s *Service) verifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResp
 	return s.issueSession(user)
 }
 
+// forgotPassword sends a reset code to an existing account's phone, reusing the
+// OTP storage/TTL/cooldown and demo-phone bypass. It does not reveal whether the
+// phone exists when the SMS path is taken, but a missing account short-circuits
+// to avoid burning SMS credit.
+func (s *Service) forgotPassword(ctx context.Context, req ForgotPasswordRequest) (OTPRequestResponse, error) {
+	phone := strings.TrimSpace(req.Phone)
+
+	user, err := s.users.FindOne(ctx, bson.M{"phone": phone})
+	if errors.Is(err, database.ErrNotFound) {
+		// Don't disclose account existence; pretend a code was sent.
+		return OTPRequestResponse{Message: "if the number exists, a reset code was sent", ExpiresIn: int(s.cfg.OTPTTL.Seconds())}, nil
+	}
+	if err != nil {
+		return OTPRequestResponse{}, err
+	}
+	if user.Role == RoleCustomer {
+		return OTPRequestResponse{}, fmt.Errorf("%w: customers sign in with a one-time code, not a password", errormap.ErrInvalidInput)
+	}
+
+	if s.isDemoPhone(phone) {
+		s.logger.InfoContext(ctx, "password reset demo phone: skipping sms send", "phone", phone)
+		return OTPRequestResponse{Message: "reset code sent", ExpiresIn: int(s.cfg.OTPTTL.Seconds())}, nil
+	}
+
+	if existing, err := s.otps.FindByID(ctx, phone); err == nil {
+		if wait := s.cfg.OTPResendCooldown - time.Since(existing.CreatedAt); wait > 0 {
+			return OTPRequestResponse{}, fmt.Errorf("%w: please wait %d seconds before requesting a new code", errormap.ErrConflict, int(wait.Seconds())+1)
+		}
+	} else if !errors.Is(err, database.ErrNotFound) {
+		return OTPRequestResponse{}, err
+	}
+
+	code, err := generateNumericCode(s.cfg.OTPCodeLength)
+	if err != nil {
+		return OTPRequestResponse{}, err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+	if err != nil {
+		return OTPRequestResponse{}, err
+	}
+	now := time.Now().UTC()
+	record := OTPCode{Phone: phone, CodeHash: string(hash), ExpiresAt: now.Add(s.cfg.OTPTTL), CreatedAt: now}
+	if _, err := s.otps.Collection().ReplaceOne(ctx, bson.M{"_id": phone}, record, options.Replace().SetUpsert(true)); err != nil {
+		return OTPRequestResponse{}, err
+	}
+	if err := s.sms.SendOTP(ctx, phone, code); err != nil {
+		_ = s.otps.Delete(ctx, phone)
+		s.logger.ErrorContext(ctx, "failed to send reset code", "phone", phone, "error", err)
+		return OTPRequestResponse{}, fmt.Errorf("could not send reset code: %w", err)
+	}
+	return OTPRequestResponse{Message: "reset code sent", ExpiresIn: int(s.cfg.OTPTTL.Seconds())}, nil
+}
+
+// resetPassword verifies the reset code and sets a new password, clearing any
+// brute-force lock.
+func (s *Service) resetPassword(ctx context.Context, req ResetPasswordRequest) error {
+	phone := strings.TrimSpace(req.Phone)
+
+	user, err := s.users.FindOne(ctx, bson.M{"phone": phone})
+	if errors.Is(err, database.ErrNotFound) {
+		return errormap.ErrUnauthorized
+	}
+	if err != nil {
+		return err
+	}
+
+	if !s.isDemoPhone(phone) {
+		record, err := s.otps.FindByID(ctx, phone)
+		if errors.Is(err, database.ErrNotFound) {
+			return errormap.ErrUnauthorized
+		}
+		if err != nil {
+			return err
+		}
+		if time.Now().UTC().After(record.ExpiresAt) || record.Attempts >= s.cfg.OTPMaxAttempts {
+			_ = s.otps.Delete(ctx, phone)
+			return errormap.ErrUnauthorized
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(record.CodeHash), []byte(strings.TrimSpace(req.Code))); err != nil {
+			_ = s.otps.Update(ctx, phone, bson.M{"$inc": bson.M{"attempts": 1}})
+			return errormap.ErrUnauthorized
+		}
+		_ = s.otps.Delete(ctx, phone)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.users.Update(ctx, user.ID, bson.M{
+		"$set":   bson.M{"password_hash": string(hash), "failed_logins": 0, "updated_at": time.Now().UTC()},
+		"$unset": bson.M{"locked_until": ""},
+	})
+}
+
 // isDemoPhone reports whether the phone is the configured demo/sample number,
 // which bypasses Kavenegar and accepts any code — handy for demos and for local
 // dev without a working SMS account. Blank OTP_DEMO_PHONE to disable it.

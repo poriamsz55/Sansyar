@@ -1,13 +1,43 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 
 	"sansyar/backend/pkg/errormap"
 	"sansyar/backend/pkg/requestctx"
 )
+
+// registrationMessage turns the first validation failure into a user-facing
+// Persian message so the signup form can show something actionable.
+func registrationMessage(err error) string {
+	var verrs validator.ValidationErrors
+	if !errors.As(err, &verrs) || len(verrs) == 0 {
+		return err.Error()
+	}
+	fe := verrs[0]
+	switch fe.Field() {
+	case "FirstName":
+		return "نام را وارد کنید"
+	case "LastName":
+		return "نام خانوادگی را وارد کنید"
+	case "NationalID":
+		return "کد ملی معتبر نیست"
+	case "Phone":
+		return "شماره موبایل معتبر نیست (۰۹xxxxxxxxx)"
+	case "Address":
+		return "آدرس را کامل وارد کنید"
+	case "Password":
+		return "رمز عبور باید حداقل ۸ کاراکتر و شامل حروف و اعداد باشد"
+	case "ConfirmPassword":
+		return "تکرار رمز عبور با رمز عبور یکسان نیست"
+	default:
+		return "اطلاعات واردشده معتبر نیست"
+	}
+}
 
 type Handler struct {
 	service *Service
@@ -31,6 +61,51 @@ func (h *Handler) Register(c echo.Context) error {
 		return errormap.JSON(c, err)
 	}
 	return c.JSON(http.StatusCreated, res)
+}
+
+func (h *Handler) RegisterOwner(c echo.Context) error {
+	var req RegisterOwnerRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid registration payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, registrationMessage(err))
+	}
+
+	res, err := h.service.registerOwner(c.Request().Context(), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusCreated, res)
+}
+
+func (h *Handler) ForgotPassword(c echo.Context) error {
+	var req ForgotPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid request payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, "Enter a valid mobile number")
+	}
+	res, err := h.service.forgotPassword(c.Request().Context(), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) ResetPassword(c echo.Context) error {
+	var req ResetPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid request payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, "Enter the code and a strong new password (min 8 chars, letters and digits)")
+	}
+	if err := h.service.resetPassword(c.Request().Context(), req); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *Handler) Login(c echo.Context) error {

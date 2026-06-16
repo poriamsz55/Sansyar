@@ -15,16 +15,17 @@ import MyReservations from "./pages/MyReservations";
 import Login from "./pages/Login";
 
 import OwnerLogin from "./pages/owner/OwnerLogin";
+import OwnerRegister from "./pages/owner/OwnerRegister";
+import OwnerForgotPassword from "./pages/owner/OwnerForgotPassword";
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
 import OwnerVenues from "./pages/owner/OwnerVenues";
-import OwnerSlots from "./pages/owner/OwnerSlots";
+import OwnerSessions from "./pages/owner/OwnerSessions";
 import OwnerReservations from "./pages/owner/OwnerReservations";
 
 import PlatformLogin from "./pages/platform/PlatformLogin";
 import PlatformDashboard from "./pages/platform/PlatformDashboard";
 import PlatformApprovals from "./pages/platform/PlatformApprovals";
-import PlatformComplexes from "./pages/platform/PlatformComplexes";
-import PlatformHalls from "./pages/platform/PlatformHalls";
+import PlatformVenues from "./pages/platform/PlatformVenues";
 import PlatformOwners from "./pages/platform/PlatformOwners";
 import PlatformCustomers from "./pages/platform/PlatformCustomers";
 import PlatformBookings from "./pages/platform/PlatformBookings";
@@ -67,6 +68,8 @@ export default function App() {
 
         {/* Venue Owner Dashboard */}
         <Route path="/owner/login" element={<OwnerLogin />} />
+        <Route path="/owner/register" element={<OwnerRegister />} />
+        <Route path="/owner/forgot-password" element={<OwnerForgotPassword />} />
         <Route
           path="/owner"
           element={
@@ -81,7 +84,8 @@ export default function App() {
           {/* Old fragmented pages, now one unified flow */}
           <Route path="complexes" element={<Navigate to="/owner/venues" replace />} />
           <Route path="halls" element={<Navigate to="/owner/venues" replace />} />
-          <Route path="slots" element={<OwnerSlots />} />
+          <Route path="slots" element={<OwnerSessions />} />
+          <Route path="sessions" element={<Navigate to="/owner/slots" replace />} />
           <Route path="reservations" element={<OwnerReservations />} />
         </Route>
 
@@ -98,8 +102,9 @@ export default function App() {
           <Route index element={<Navigate to="/platform/dashboard" replace />} />
           <Route path="dashboard" element={<PlatformDashboard />} />
           <Route path="approvals" element={<PlatformApprovals />} />
-          <Route path="complexes" element={<PlatformComplexes />} />
-          <Route path="halls" element={<PlatformHalls />} />
+          <Route path="venues" element={<PlatformVenues />} />
+          <Route path="complexes" element={<Navigate to="/platform/venues" replace />} />
+          <Route path="halls" element={<Navigate to="/platform/venues" replace />} />
           <Route path="owners" element={<PlatformOwners />} />
           <Route path="customers" element={<PlatformCustomers />} />
           <Route path="bookings" element={<PlatformBookings />} />

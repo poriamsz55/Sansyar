@@ -209,7 +209,7 @@ func (h *Handler) DeleteComplex(c echo.Context) error {
 }
 
 func (h *Handler) ApproveComplex(c echo.Context) error {
-	item, err := h.service.approveComplex(c.Request().Context(), c.Param("id"), ComplexApproved)
+	item, err := h.service.approveComplex(c.Request().Context(), c.Param("id"), ComplexApproved, "")
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
@@ -217,7 +217,7 @@ func (h *Handler) ApproveComplex(c echo.Context) error {
 }
 
 func (h *Handler) RejectComplex(c echo.Context) error {
-	item, err := h.service.approveComplex(c.Request().Context(), c.Param("id"), ComplexRejected)
+	item, err := h.service.approveComplex(c.Request().Context(), c.Param("id"), ComplexRejected, reasonFromBody(c))
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
@@ -233,7 +233,7 @@ func (h *Handler) ListAdminHalls(c echo.Context) error {
 }
 
 func (h *Handler) ApproveHall(c echo.Context) error {
-	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallApproved)
+	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallApproved, "")
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
@@ -241,11 +241,20 @@ func (h *Handler) ApproveHall(c echo.Context) error {
 }
 
 func (h *Handler) RejectHall(c echo.Context) error {
-	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallRejected)
+	item, err := h.service.approveHall(c.Request().Context(), c.Param("id"), HallRejected, reasonFromBody(c))
 	if err != nil {
 		return errormap.JSON(c, err)
 	}
 	return c.JSON(http.StatusOK, item)
+}
+
+// reasonFromBody reads an optional { "reason": "..." } from the request body.
+func reasonFromBody(c echo.Context) string {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind(&body)
+	return body.Reason
 }
 
 func (h *Handler) ListHalls(c echo.Context) error {
@@ -353,6 +362,122 @@ func (h *Handler) UpdateSlot(c echo.Context) error {
 		return errormap.JSON(c, err)
 	}
 	return c.JSON(http.StatusOK, item)
+}
+
+// ---- Session management (owner calendar) ---------------------------------
+
+func (h *Handler) DeleteSlot(c echo.Context) error {
+	if err := h.service.deleteSlot(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id")); err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) ListSessions(c echo.Context) error {
+	ownerID := requestctx.UserID(c.Request().Context())
+	var from, to time.Time
+	if v := c.QueryParam("from"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return errormap.Input(c, "from must be an RFC3339 timestamp")
+		}
+		from = t
+	}
+	if v := c.QueryParam("to"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			return errormap.Input(c, "to must be an RFC3339 timestamp")
+		}
+		to = t
+	}
+	items, err := h.service.listSessions(c.Request().Context(), ownerID, c.QueryParam("hall_id"), c.QueryParam("complex_id"), from, to)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) GenerateSessions(c echo.Context) error {
+	var req GenerateSessionsRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid generation payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	res, err := h.service.generateSessions(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) CopyDay(c echo.Context) error {
+	var req CopyDayRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid copy payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	res, err := h.service.copyDay(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) DuplicateWeek(c echo.Context) error {
+	var req DuplicateWeekRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid duplicate payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	res, err := h.service.duplicateWeek(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) BulkUpdateSessions(c echo.Context) error {
+	var req BulkUpdateSessionsRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid bulk payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	res, err := h.service.bulkUpdate(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) BlockRange(c echo.Context) error {
+	var req BlockRangeRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid block payload")
+	}
+	if err := c.Validate(req); err != nil {
+		return errormap.Input(c, err.Error())
+	}
+	res, err := h.service.blockRange(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *Handler) SessionAudit(c echo.Context) error {
+	items, err := h.service.listAudit(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.QueryParam("hall_id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
 }
 
 func (h *Handler) ListSlots(c echo.Context) error {

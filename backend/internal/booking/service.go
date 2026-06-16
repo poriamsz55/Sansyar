@@ -15,6 +15,10 @@ import (
 	"sansyar/backend/pkg/errormap"
 )
 
+// effectiveCapacityExpr yields a session's capacity, treating a missing or
+// non-positive value (legacy single-slot documents) as 1.
+var effectiveCapacityExpr = bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$capacity", 0}}, "$capacity", 1}}
+
 type Service struct {
 	bookings    *database.Repository[Booking]
 	slots       *database.Repository[venue.Slot]
@@ -46,18 +50,25 @@ func (s *Service) create(ctx context.Context, customerID string, idempotencyKey 
 
 	bookingID := uuid.NewString()
 	now := time.Now().UTC()
-	update := bson.M{"$set": bson.M{
-		"status":      venue.SlotReserved,
-		"reserved_by": customerID,
-		"booking_id":  bookingID,
-		"updated_at":  now,
-	}}
-	result, err := s.slots.Collection().UpdateOne(ctx, bson.M{"_id": req.SlotID, "status": venue.SlotAvailable}, update)
+	// Multi-capacity sessions take more than one booking. Atomically claim a
+	// spot only while the session is open and not yet full. A missing/zero
+	// capacity on legacy documents is treated as a single exclusive slot.
+	result, err := s.slots.Collection().UpdateOne(ctx,
+		bson.M{
+			"_id":    req.SlotID,
+			"status": venue.SlotAvailable,
+			"$expr":  bson.M{"$lt": bson.A{"$booked_count", effectiveCapacityExpr}},
+		},
+		bson.M{
+			"$inc": bson.M{"booked_count": 1},
+			"$set": bson.M{"updated_at": now},
+		},
+	)
 	if err != nil {
 		return Booking{}, err
 	}
 	if result.MatchedCount == 0 {
-		return Booking{}, fmt.Errorf("%w: slot is no longer available", errormap.ErrConflict)
+		return Booking{}, fmt.Errorf("%w: session is full or no longer available", errormap.ErrConflict)
 	}
 
 	deposit := depositFor(slot, req.PaymentType)
@@ -79,15 +90,17 @@ func (s *Service) create(ctx context.Context, customerID string, idempotencyKey 
 		PaymentStatus:              paymentStatusFor(req.PaymentType),
 		Status:                     statusFor(req.PaymentType),
 		CancellationPolicySnapshot: slot.CancellationPolicySnapshot,
+		Timeline:                   []BookingEvent{{At: now, Action: "created", By: customerID}},
 		IdempotencyKey:             idempotencyKey,
 		CreatedAt:                  now,
 		UpdatedAt:                  now,
 	}
 
 	if err := s.bookings.Create(ctx, booking); err != nil {
-		_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": req.SlotID, "booking_id": bookingID}, bson.M{"$set": bson.M{"status": venue.SlotAvailable, "updated_at": time.Now().UTC()}, "$unset": bson.M{"reserved_by": "", "booking_id": ""}})
+		// Release the claimed spot so capacity is not leaked.
+		_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": req.SlotID}, bson.M{"$inc": bson.M{"booked_count": -1}, "$set": bson.M{"updated_at": time.Now().UTC()}})
 		if mongo.IsDuplicateKeyError(err) {
-			return Booking{}, fmt.Errorf("%w: active booking already exists for slot", errormap.ErrConflict)
+			return Booking{}, fmt.Errorf("%w: you already have a booking for this session", errormap.ErrConflict)
 		}
 		return Booking{}, err
 	}
@@ -126,20 +139,46 @@ func (s *Service) cancel(ctx context.Context, customerID string, bookingID strin
 	}
 
 	now := time.Now().UTC()
+	decision := CalculateRefund(item.FinalAmount, item.StartsAt, now, 24, 6, 50)
 	newStatus := StatusCancelledByUser
-	if decision := CalculateRefund(item.FinalAmount, item.StartsAt, now, 24, 6, 50); decision.RefundAmount == item.FinalAmount {
+	if decision.RefundAmount == item.FinalAmount {
 		newStatus = StatusRefunded
 	} else if decision.RefundAmount > 0 {
 		newStatus = StatusPartiallyRefunded
 	}
-	if err := s.bookings.Update(ctx, bookingID, bson.M{"$set": bson.M{"status": newStatus, "updated_at": now}}); err != nil {
+	event := BookingEvent{At: now, Action: "cancelled_by_user", By: customerID, Note: bookingCancelNote(decision)}
+	if err := s.bookings.Update(ctx, bookingID, bson.M{
+		"$set":  bson.M{"status": newStatus, "refund_amount": decision.RefundAmount, "cancelled_at": now, "updated_at": now},
+		"$push": bson.M{"timeline": event},
+	}); err != nil {
 		return Booking{}, err
 	}
-	_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": item.SlotID, "booking_id": item.ID}, bson.M{"$set": bson.M{"status": venue.SlotAvailable, "updated_at": now}, "$unset": bson.M{"reserved_by": "", "booking_id": ""}})
+	releaseSpot(ctx, s.slots, item.SlotID, now)
 	return s.bookings.FindByID(ctx, bookingID)
 }
 
-func (s *Service) adminCancel(ctx context.Context, bookingID string) (Booking, error) {
+// bookingCancelNote describes the refund outcome for the audit trail.
+func bookingCancelNote(d RefundDecision) string {
+	switch d.Mode {
+	case "free":
+		return "بازپرداخت کامل"
+	case "partial":
+		return "بازپرداخت جزئی"
+	default:
+		return "بدون بازپرداخت"
+	}
+}
+
+// releaseSpot frees one capacity unit on a session when a booking is cancelled,
+// never letting booked_count drop below zero.
+func releaseSpot(ctx context.Context, slots *database.Repository[venue.Slot], slotID string, now time.Time) {
+	_, _ = slots.Collection().UpdateOne(ctx,
+		bson.M{"_id": slotID, "booked_count": bson.M{"$gt": 0}},
+		bson.M{"$inc": bson.M{"booked_count": -1}, "$set": bson.M{"updated_at": now}},
+	)
+}
+
+func (s *Service) adminCancel(ctx context.Context, actorID, bookingID, reason string) (Booking, error) {
 	item, err := s.bookings.FindByID(ctx, bookingID)
 	if errors.Is(err, database.ErrNotFound) {
 		return Booking{}, errormap.ErrNotFound
@@ -151,14 +190,19 @@ func (s *Service) adminCancel(ctx context.Context, bookingID string) (Booking, e
 		return Booking{}, fmt.Errorf("%w: booking cannot be cancelled from current status", errormap.ErrConflict)
 	}
 	now := time.Now().UTC()
-	if err := s.bookings.Update(ctx, bookingID, bson.M{"$set": bson.M{"status": StatusCancelledByOwner, "updated_at": now}}); err != nil {
+	decision := CalculateRefund(item.FinalAmount, item.StartsAt, now, 24, 6, 50)
+	event := BookingEvent{At: now, Action: "cancelled_by_admin", By: actorID, Note: reason}
+	if err := s.bookings.Update(ctx, bookingID, bson.M{
+		"$set":  bson.M{"status": StatusCancelledByOwner, "cancellation_reason": reason, "refund_amount": decision.RefundAmount, "cancelled_at": now, "updated_at": now},
+		"$push": bson.M{"timeline": event},
+	}); err != nil {
 		return Booking{}, err
 	}
-	_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": item.SlotID, "booking_id": item.ID}, bson.M{"$set": bson.M{"status": venue.SlotAvailable, "updated_at": now}, "$unset": bson.M{"reserved_by": "", "booking_id": ""}})
+	releaseSpot(ctx, s.slots, item.SlotID, now)
 	return s.bookings.FindByID(ctx, bookingID)
 }
 
-func (s *Service) adminConfirm(ctx context.Context, bookingID string) (Booking, error) {
+func (s *Service) adminConfirm(ctx context.Context, actorID, bookingID string) (Booking, error) {
 	item, err := s.bookings.FindByID(ctx, bookingID)
 	if errors.Is(err, database.ErrNotFound) {
 		return Booking{}, errormap.ErrNotFound
@@ -170,7 +214,11 @@ func (s *Service) adminConfirm(ctx context.Context, bookingID string) (Booking, 
 		return Booking{}, fmt.Errorf("%w: booking cannot be confirmed from current status", errormap.ErrConflict)
 	}
 	now := time.Now().UTC()
-	if err := s.bookings.Update(ctx, bookingID, bson.M{"$set": bson.M{"status": StatusConfirmed, "payment_status": "paid", "updated_at": now}}); err != nil {
+	event := BookingEvent{At: now, Action: "confirmed", By: actorID}
+	if err := s.bookings.Update(ctx, bookingID, bson.M{
+		"$set":  bson.M{"status": StatusConfirmed, "payment_status": "paid", "updated_at": now},
+		"$push": bson.M{"timeline": event},
+	}); err != nil {
 		return Booking{}, err
 	}
 	return s.bookings.FindByID(ctx, bookingID)

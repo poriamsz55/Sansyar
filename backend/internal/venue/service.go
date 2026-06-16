@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"sansyar/backend/internal/auth"
@@ -21,10 +22,11 @@ type Service struct {
 	complexes *database.Repository[Complex]
 	halls     *database.Repository[Hall]
 	slots     *database.Repository[Slot]
+	audits    *database.Repository[ScheduleAudit]
 }
 
-func NewService(complexes *database.Repository[Complex], halls *database.Repository[Hall], slots *database.Repository[Slot]) *Service {
-	return &Service{complexes: complexes, halls: halls, slots: slots}
+func NewService(complexes *database.Repository[Complex], halls *database.Repository[Hall], slots *database.Repository[Slot], audits *database.Repository[ScheduleAudit]) *Service {
+	return &Service{complexes: complexes, halls: halls, slots: slots, audits: audits}
 }
 
 type listComplexParams struct {
@@ -187,6 +189,8 @@ func (s *Service) summarizeComplex(ctx context.Context, item Complex) (ComplexLi
 		"complex_id": item.ID,
 		"status":     SlotAvailable,
 		"starts_at":  bson.M{"$gte": now},
+		// Multi-capacity: a session only counts as available while it has room.
+		"$expr": bson.M{"$lt": bson.A{"$booked_count", bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$capacity", 0}}, "$capacity", 1}}}},
 	}
 	slots, err := s.slots.FindAll(ctx, slotFilter, database.Page{Limit: 500})
 	if err != nil {
@@ -237,6 +241,7 @@ func (s *Service) createComplex(ctx context.Context, ownerID string, req CreateC
 		Name:               req.Name,
 		Slug:               req.Slug,
 		Description:        req.Description,
+		Province:           req.Province,
 		City:               req.City,
 		Neighborhood:       req.Neighborhood,
 		Address:            req.Address,
@@ -288,6 +293,7 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 		changes := ComplexChanges{
 			Name:         req.Name,
 			Description:  req.Description,
+			Province:     req.Province,
 			City:         req.City,
 			Neighborhood: req.Neighborhood,
 			Address:      req.Address,
@@ -324,6 +330,9 @@ func buildComplexUpdate(req UpdateComplexRequest, now time.Time) bson.M {
 	}
 	if req.Description != "" {
 		update["description"] = req.Description
+	}
+	if req.Province != "" {
+		update["province"] = req.Province
 	}
 	if req.City != "" {
 		update["city"] = req.City
@@ -381,7 +390,7 @@ func (s *Service) deleteComplex(ctx context.Context, ownerID string, id string) 
 	return s.complexes.Delete(ctx, id)
 }
 
-func (s *Service) approveComplex(ctx context.Context, id string, status string) (Complex, error) {
+func (s *Service) approveComplex(ctx context.Context, id string, status string, reason string) (Complex, error) {
 	if status != ComplexApproved && status != ComplexRejected {
 		return Complex{}, fmt.Errorf("%w: invalid approval status", errormap.ErrInvalidInput)
 	}
@@ -408,7 +417,15 @@ func (s *Service) approveComplex(ctx context.Context, id string, status string) 
 		return s.complexes.FindByID(ctx, id)
 	}
 
-	if err := s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": status, "updated_at": now}}); err != nil {
+	set := bson.M{"status": status, "updated_at": now}
+	update := bson.M{"$set": set}
+	if status == ComplexRejected {
+		set["rejection_reason"] = reason
+	} else {
+		// Approval clears any prior rejection note.
+		update["$unset"] = bson.M{"rejection_reason": ""}
+	}
+	if err := s.complexes.Update(ctx, id, update); err != nil {
 		return Complex{}, err
 	}
 	return s.complexes.FindByID(ctx, id)
@@ -423,6 +440,9 @@ func applyComplexChanges(ch *ComplexChanges, now time.Time) bson.M {
 	}
 	if ch.Description != "" {
 		set["description"] = ch.Description
+	}
+	if ch.Province != "" {
+		set["province"] = ch.Province
 	}
 	if ch.City != "" {
 		set["city"] = ch.City
@@ -601,6 +621,30 @@ func (s *Service) deleteHall(ctx context.Context, ownerID string, id string) err
 	return s.halls.Update(ctx, id, bson.M{"$set": bson.M{"is_active": false, "updated_at": time.Now().UTC()}})
 }
 
+// deleteSlot permanently removes a session. Sessions with active bookings are
+// kept (the owner should close/cancel them instead) so bookings aren't orphaned.
+func (s *Service) deleteSlot(ctx context.Context, ownerID string, id string) error {
+	item, err := s.slots.FindByID(ctx, id)
+	if errors.Is(err, database.ErrNotFound) {
+		return errormap.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	complex, err := s.getComplex(ctx, item.ComplexID)
+	if err != nil {
+		return err
+	}
+	if err := rbac.RequireOwnerOrAdmin(ctx, complex.OwnerID, ownerID); err != nil {
+		return err
+	}
+	if item.BookedCount > 0 {
+		return fmt.Errorf("%w: session has active bookings; close or cancel it instead of deleting", errormap.ErrConflict)
+	}
+	s.audit(ctx, ownerID, item.ComplexID, item.HallID, item.ID, "session.delete", "")
+	return s.slots.Delete(ctx, id)
+}
+
 func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlotRequest) (Slot, error) {
 	complex, err := s.getComplex(ctx, req.ComplexID)
 	if err != nil {
@@ -616,6 +660,14 @@ func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlot
 	if status == "" {
 		status = SlotAvailable
 	}
+	capacity := req.Capacity
+	if capacity <= 0 {
+		capacity = 1
+	}
+	paymentPolicy := req.PaymentPolicy
+	if paymentPolicy == "" {
+		paymentPolicy = "full_online"
+	}
 	finalPrice := req.BasePrice - (req.BasePrice * int64(req.DiscountPercent) / 100)
 	now := time.Now().UTC()
 	item := Slot{
@@ -623,26 +675,36 @@ func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlot
 		HallID:                     req.HallID,
 		ComplexID:                  req.ComplexID,
 		SportID:                    req.SportID,
+		Title:                      req.Title,
 		StartsAt:                   req.StartsAt.UTC(),
 		EndsAt:                     req.EndsAt.UTC(),
 		DurationMinutes:            int(req.EndsAt.Sub(req.StartsAt).Minutes()),
 		BasePrice:                  req.BasePrice,
 		FinalPrice:                 finalPrice,
 		DiscountPercent:            req.DiscountPercent,
+		Capacity:                   capacity,
+		BookedCount:                0,
 		Status:                     status,
-		PaymentPolicy:              req.PaymentPolicy,
+		PaymentPolicy:              paymentPolicy,
 		MinDepositAmount:           req.MinDepositAmount,
 		CancellationPolicySnapshot: complex.CancellationPolicy,
+		Notes:                      req.Notes,
 		CreatedBy:                  ownerID,
 		CreatedAt:                  now,
 		UpdatedAt:                  now,
 	}
 	if err := s.slots.Create(ctx, item); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return Slot{}, fmt.Errorf("%w: a session already exists at this time", errormap.ErrConflict)
+		}
 		return Slot{}, err
 	}
+	s.audit(ctx, ownerID, item.ComplexID, item.HallID, item.ID, "session.create", item.Title)
 	return item, nil
 }
 
+// updateSlot applies a partial edit to one session: operational status, title,
+// drag-resized times, price, discount, capacity, notes, or internal comment.
 func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req UpdateSlotRequest) (Slot, error) {
 	item, err := s.slots.FindByID(ctx, id)
 	if errors.Is(err, database.ErrNotFound) {
@@ -658,16 +720,90 @@ func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req
 	if err := rbac.RequireOwnerOrAdmin(ctx, complex.OwnerID, ownerID); err != nil {
 		return Slot{}, err
 	}
-	validStatuses := map[string]struct{}{
-		SlotAvailable: {}, SlotBlocked: {}, SlotMaintenance: {},
+
+	now := time.Now().UTC()
+	update := bson.M{"updated_at": now}
+
+	if req.Status != nil {
+		if !isValidOperationalStatus(*req.Status) {
+			return Slot{}, fmt.Errorf("%w: invalid session status", errormap.ErrInvalidInput)
+		}
+		update["status"] = *req.Status
 	}
-	if _, ok := validStatuses[req.Status]; !ok {
-		return Slot{}, fmt.Errorf("%w: invalid slot status", errormap.ErrInvalidInput)
+	if req.Title != nil {
+		update["title"] = *req.Title
 	}
-	if err := s.slots.Update(ctx, id, bson.M{"$set": bson.M{"status": req.Status, "updated_at": time.Now().UTC()}}); err != nil {
+	if req.Notes != nil {
+		update["notes"] = *req.Notes
+	}
+	if req.AdminComment != nil {
+		update["admin_comment"] = *req.AdminComment
+	}
+
+	// Time edits come from drag-to-move / drag-to-resize on the calendar.
+	starts, ends := item.StartsAt, item.EndsAt
+	if req.StartsAt != nil {
+		starts = req.StartsAt.UTC()
+	}
+	if req.EndsAt != nil {
+		ends = req.EndsAt.UTC()
+	}
+	if req.StartsAt != nil || req.EndsAt != nil {
+		if !ends.After(starts) {
+			return Slot{}, fmt.Errorf("%w: end must be after start", errormap.ErrInvalidInput)
+		}
+		update["starts_at"] = starts
+		update["ends_at"] = ends
+		update["duration_minutes"] = int(ends.Sub(starts).Minutes())
+	}
+
+	// Price/discount edits recompute the final price.
+	base := item.BasePrice
+	discount := item.DiscountPercent
+	if req.BasePrice != nil {
+		base = *req.BasePrice
+	}
+	if req.DiscountPercent != nil {
+		discount = *req.DiscountPercent
+	}
+	if req.BasePrice != nil || req.DiscountPercent != nil {
+		if discount < 0 || discount > 100 {
+			return Slot{}, fmt.Errorf("%w: discount must be between 0 and 100", errormap.ErrInvalidInput)
+		}
+		update["base_price"] = base
+		update["discount_percent"] = discount
+		update["final_price"] = base - (base * int64(discount) / 100)
+	}
+
+	if req.Capacity != nil {
+		if *req.Capacity < item.BookedCount {
+			return Slot{}, fmt.Errorf("%w: capacity cannot be below current bookings (%d)", errormap.ErrInvalidInput, item.BookedCount)
+		}
+		if *req.Capacity < 1 {
+			return Slot{}, fmt.Errorf("%w: capacity must be at least 1", errormap.ErrInvalidInput)
+		}
+		update["capacity"] = *req.Capacity
+	}
+
+	if err := s.slots.Update(ctx, id, bson.M{"$set": update}); err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return Slot{}, fmt.Errorf("%w: another session already occupies this time", errormap.ErrConflict)
+		}
 		return Slot{}, err
 	}
+	s.audit(ctx, ownerID, item.ComplexID, item.HallID, item.ID, "session.update", "")
 	return s.slots.FindByID(ctx, id)
+}
+
+// isValidOperationalStatus reports whether status is an owner-settable session
+// state. Booking-derived states (reserved/full) and expiry are not settable.
+func isValidOperationalStatus(status string) bool {
+	switch status {
+	case SlotAvailable, SlotBlocked, SlotClosed, SlotMaintenance, SlotHoliday, SlotSpecialEvent:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) listSlots(ctx context.Context, filter bson.M) ([]Slot, error) {
@@ -704,6 +840,7 @@ func (s *Service) mapVenues(ctx context.Context, lat float64, lng float64, radiu
 				"cond": bson.M{"$and": bson.A{
 					bson.M{"$eq": bson.A{"$$slot.status", SlotAvailable}},
 					bson.M{"$gte": bson.A{"$$slot.starts_at", time.Now().UTC()}},
+					bson.M{"$lt": bson.A{"$$slot.booked_count", bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$$slot.capacity", 0}}, "$$slot.capacity", 1}}}},
 				}},
 			}},
 		}},
@@ -745,11 +882,18 @@ func (s *Service) mapVenues(ctx context.Context, lat float64, lng float64, radiu
 	return filtered, nil
 }
 
-func (s *Service) approveHall(ctx context.Context, id string, status string) (Hall, error) {
+func (s *Service) approveHall(ctx context.Context, id string, status string, reason string) (Hall, error) {
 	if status != HallApproved && status != HallRejected {
 		return Hall{}, fmt.Errorf("%w: invalid approval status", errormap.ErrInvalidInput)
 	}
-	if err := s.halls.Update(ctx, id, bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}}); errors.Is(err, database.ErrNotFound) {
+	set := bson.M{"status": status, "updated_at": time.Now().UTC()}
+	update := bson.M{"$set": set}
+	if status == HallRejected {
+		set["rejection_reason"] = reason
+	} else {
+		update["$unset"] = bson.M{"rejection_reason": ""}
+	}
+	if err := s.halls.Update(ctx, id, update); errors.Is(err, database.ErrNotFound) {
 		return Hall{}, errormap.ErrNotFound
 	} else if err != nil {
 		return Hall{}, err

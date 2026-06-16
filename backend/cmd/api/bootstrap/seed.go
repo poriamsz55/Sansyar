@@ -4,13 +4,36 @@ import (
 	"context"
 	"time"
 
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"golang.org/x/crypto/bcrypt"
 
 	"sansyar/backend/internal/auth"
+	"sansyar/backend/internal/location"
 	"sansyar/backend/internal/sport"
 	"sansyar/backend/internal/venue"
 	"sansyar/backend/pkg/database"
 )
+
+// seedProvinces loads Iran's 31 provinces into MongoDB. It is reference data the
+// location picker depends on, so it runs on every boot regardless of SEED_DATA.
+func seedProvinces(ctx context.Context, provinces *database.Repository[location.Province]) error {
+	count, err := provinces.Collection().CountDocuments(ctx, map[string]any{})
+	if err != nil {
+		return err
+	}
+	if int(count) == len(location.Provinces) {
+		return nil
+	}
+	now := time.Now().UTC()
+	for i, p := range location.Provinces {
+		item := location.Province{ID: p.ID, Name: p.Name, Slug: p.Slug, Order: i + 1, CreatedAt: now, UpdatedAt: now}
+		// Upsert keeps existing docs and fills any gaps without duplicating.
+		if _, err := provinces.Collection().UpdateByID(ctx, p.ID, map[string]any{"$set": item}, options.UpdateOne().SetUpsert(true)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func seedData(ctx context.Context, users *database.Repository[auth.User], sports *database.Repository[sport.Sport], complexes *database.Repository[venue.Complex], halls *database.Repository[venue.Hall], slots *database.Repository[venue.Slot]) error {
 	now := time.Now().UTC()
@@ -41,7 +64,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 		}
 		items := []auth.User{
 			{ID: "user-admin", FullName: "مدیر کل", Phone: "09000000000", PasswordHash: string(hash), Role: auth.RoleSuperAdmin, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
-			{ID: "user-owner", FullName: "مالک مجموعه", Phone: "09120000000", PasswordHash: string(hash), Role: auth.RoleVenueOwner, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
+			{ID: "user-owner", FullName: "مالک مجموعه", FirstName: "مالک", LastName: "مجموعه", NationalID: "0084575948", Address: "تهران، خیابان آزادی", Phone: "09120000000", PasswordHash: string(hash), Role: auth.RoleVenueOwner, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
 			{ID: "user-customer", FullName: "کاربر نمونه", Phone: "09350000000", PasswordHash: string(hash), Role: auth.RoleCustomer, Status: auth.UserStatusActive, CreatedAt: now, UpdatedAt: now},
 		}
 		for _, item := range items {
@@ -81,7 +104,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 			slot := venue.Slot{
 				ID: "slot-azadi-" + time.Unix(int64(i), 0).Format("150405"), HallID: hall.ID, ComplexID: complex.ID, SportID: "sport-futsal",
 				StartsAt: start, EndsAt: start.Add(90 * time.Minute), DurationMinutes: 90,
-				BasePrice: 2500000, FinalPrice: 2250000, DiscountPercent: 10, Status: venue.SlotAvailable,
+				BasePrice: 2500000, FinalPrice: 2250000, DiscountPercent: 10, Capacity: 10, BookedCount: 0, Status: venue.SlotAvailable,
 				PaymentPolicy: "full_online", MinDepositAmount: 1000000, CancellationPolicySnapshot: complex.CancellationPolicy,
 				CreatedBy: "user-owner", CreatedAt: now, UpdatedAt: now,
 			}

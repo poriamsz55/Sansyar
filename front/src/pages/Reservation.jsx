@@ -20,6 +20,7 @@ import {
   clearPendingReservation,
 } from "@/lib/reservation";
 import { createBooking } from "@/api/endpoints";
+import { toast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { PAYMENT_TYPE } from "@/lib/constants";
 import {
@@ -62,6 +63,17 @@ export default function Reservation() {
       await createBooking({ slot_id: pending.slot.id, payment_type: payment });
       clearPendingReservation();
       navigate("/my-reservations?success=1");
+    } catch (err) {
+      const m = err?.message || "";
+      if (/expired/i.test(m)) {
+        toast("این سانس منقضی شده است. لطفاً سانس دیگری انتخاب کنید.", "error");
+        clearPendingReservation();
+        navigate("/complexes");
+      } else if (/full|capacity/i.test(m)) {
+        toast("ظرفیت این سانس تکمیل شده است.", "error");
+      } else {
+        toast(m || "ثبت رزرو با خطا مواجه شد.", "error");
+      }
     } finally {
       setSubmitting(false);
     }

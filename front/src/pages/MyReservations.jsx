@@ -17,7 +17,7 @@ import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { Dialog } from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
-  listAllBookings,
+  myBookings,
   cancelBooking,
   loadVenueLookups,
 } from "@/api/endpoints";

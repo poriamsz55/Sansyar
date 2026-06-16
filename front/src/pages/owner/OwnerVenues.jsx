@@ -33,6 +33,7 @@ import {
   listOwnerComplexes,
   listHalls,
   listSports,
+  listProvinces,
   createComplex,
   updateComplex,
   deleteComplex,
@@ -54,9 +55,10 @@ const COMPLEX_STEPS = ["اطلاعات پایه", "موقعیت مکانی", "ت
 
 const emptyComplex = {
   name: "",
-  city: CITIES[0],
-  neighborhood: "",
   contact_phone: "",
+  province: "",
+  city: "",
+  neighborhood: "",
   address: "",
   lat: 35.6892,
   lng: 51.389,
@@ -84,6 +86,7 @@ export default function OwnerVenues() {
   const [complexes, setComplexes] = useState(null);
   const [hallsByComplex, setHallsByComplex] = useState({});
   const [sports, setSports] = useState([]);
+  const [provinces, setProvinces] = useState([]);
   const [error, setError] = useState(null);
 
   // Complex dialog state
@@ -104,9 +107,10 @@ export default function OwnerVenues() {
   async function load() {
     setError(null);
     try {
-      const [cx, sp] = await Promise.all([listOwnerComplexes(), listSports()]);
+      const [cx, sp, pv] = await Promise.all([listOwnerComplexes(), listSports(), listProvinces()]);
       setComplexes(cx);
       setSports(sp);
+      setProvinces(pv);
       const lists = await Promise.all(cx.map((c) => listHalls(c.id, { includeInactive: true })));
       setHallsByComplex(Object.fromEntries(cx.map((c, i) => [c.id, lists[i]])));
     } catch (err) {
@@ -135,9 +139,10 @@ export default function OwnerVenues() {
     const src = mergePendingChanges(c);
     setComplexForm({
       name: src.name || "",
-      city: src.city || CITIES[0],
-      neighborhood: src.neighborhood || "",
       contact_phone: src.contact_phone || "",
+      province: src.province || "",
+      city: src.city || "",
+      neighborhood: src.neighborhood || "",
       address: src.address || "",
       lat: src.location?.coordinates?.[1] ?? 35.6892,
       lng: src.location?.coordinates?.[0] ?? 51.389,
@@ -164,9 +169,19 @@ export default function OwnerVenues() {
       toast("نام مجموعه را وارد کنید", "error");
       return false;
     }
-    if (s === 1 && !complexForm.address.trim()) {
-      toast("آدرس کامل را وارد کنید", "error");
-      return false;
+    if (s === 1) {
+      if (!complexForm.province) {
+        toast("استان را انتخاب کنید", "error");
+        return false;
+      }
+      if (!complexForm.city.trim()) {
+        toast("شهر را وارد کنید", "error");
+        return false;
+      }
+      if (!complexForm.address.trim()) {
+        toast("آدرس کامل را وارد کنید", "error");
+        return false;
+      }
     }
     return true;
   }
@@ -521,41 +536,63 @@ export default function OwnerVenues() {
           submitLabel={editingComplex ? "ذخیره تغییرات" : "ثبت مجموعه"}
         >
           {step === 0 && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
+            <div className="grid gap-4">
+              <div className="space-y-1.5">
                 <Label>نام مجموعه</Label>
                 <Input value={complexForm.name} onChange={(e) => setC("name", e.target.value)} required />
               </div>
               <div className="space-y-1.5">
-                <Label>شهر</Label>
-                <Select value={complexForm.city} onChange={(e) => setC("city", e.target.value)}>
-                  {CITIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>محله</Label>
-                <Input value={complexForm.neighborhood} onChange={(e) => setC("neighborhood", e.target.value)} />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>تلفن تماس</Label>
+                <Label>تلفن تماس مجموعه</Label>
                 <Input
                   value={complexForm.contact_phone}
                   onChange={(e) => setC("contact_phone", e.target.value)}
                   dir="ltr"
+                  placeholder="02100000000"
                 />
               </div>
             </div>
           )}
           {step === 1 && (
             <div className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>استان</Label>
+                  <Select value={complexForm.province} onChange={(e) => setC("province", e.target.value)}>
+                    <option value="" disabled>
+                      انتخاب استان
+                    </option>
+                    {provinces.map((p) => (
+                      <option key={p.id || p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>شهر</Label>
+                  <Input
+                    value={complexForm.city}
+                    onChange={(e) => setC("city", e.target.value)}
+                    list="city-suggestions"
+                    placeholder="نام شهر را وارد کنید"
+                  />
+                  <datalist id="city-suggestions">
+                    {CITIES.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>محله (اختیاری)</Label>
+                <Input value={complexForm.neighborhood} onChange={(e) => setC("neighborhood", e.target.value)} />
+              </div>
               <div className="space-y-1.5">
                 <Label>آدرس کامل</Label>
                 <Input value={complexForm.address} onChange={(e) => setC("address", e.target.value)} required />
               </div>
               <div className="space-y-1.5">
-                <Label>موقعیت روی نقشه</Label>
+                <Label>موقعیت دقیق روی نقشه</Label>
                 <MapPicker
                   value={{ lat: complexForm.lat, lng: complexForm.lng }}
                   onChange={({ lat, lng }) => setComplexForm((f) => ({ ...f, lat, lng }))}

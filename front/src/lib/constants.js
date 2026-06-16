@@ -57,8 +57,18 @@ export const SLOT_STATUS = {
   available: { label: "آزاد", tone: "success" },
   reserved: { label: "رزرو شده", tone: "muted" },
   blocked: { label: "مسدود", tone: "destructive" },
+  closed: { label: "تعطیل", tone: "muted" },
+  holiday: { label: "تعطیل رسمی", tone: "warning" },
+  special_event: { label: "رویداد ویژه", tone: "primary" },
   maintenance: { label: "تعمیرات", tone: "warning" },
   expired: { label: "منقضی", tone: "muted" },
+};
+
+// Booking fill level derived from booked_count vs capacity (see lib/sessions.js).
+export const SESSION_FILL = {
+  available: { label: "خالی", tone: "success" },
+  partial: { label: "نیمه‌پر", tone: "warning" },
+  full: { label: "تکمیل", tone: "destructive" },
 };
 
 export const BOOKING_STATUS = {
@@ -82,6 +92,16 @@ export const PAYMENT_TYPE = {
   mixed: "ترکیبی",
 };
 
+export const PAYMENT_STATUS = {
+  unpaid: { label: "پرداخت‌نشده", tone: "warning" },
+  paid: { label: "پرداخت‌شده", tone: "success" },
+  deposit_paid: { label: "بیعانه پرداخت‌شده", tone: "primary" },
+  pay_at_venue: { label: "پرداخت در محل", tone: "muted" },
+  failed: { label: "ناموفق", tone: "destructive" },
+  refunded: { label: "بازپرداخت‌شده", tone: "muted" },
+  partially_refunded: { label: "بازپرداخت جزئی", tone: "muted" },
+};
+
 export const SPORTS = [
   { id: "sport-futsal", name: "فوتسال", slug: "futsal" },
   { id: "sport-football", name: "فوتبال", slug: "football" },
@@ -91,6 +111,42 @@ export const SPORTS = [
 ];
 
 export const CITIES = ["تهران", "کرج", "اصفهان", "مشهد", "شیراز", "تبریز"];
+
+// All 31 Iranian provinces (استان‌ها). Used as the offline fallback for the
+// province picker; the live list comes from the backend GET /provinces.
+export const IRAN_PROVINCES = [
+  "تهران",
+  "البرز",
+  "اصفهان",
+  "فارس",
+  "خراسان رضوی",
+  "آذربایجان شرقی",
+  "آذربایجان غربی",
+  "اردبیل",
+  "بوشهر",
+  "چهارمحال و بختیاری",
+  "خراسان جنوبی",
+  "خراسان شمالی",
+  "خوزستان",
+  "زنجان",
+  "سمنان",
+  "سیستان و بلوچستان",
+  "کردستان",
+  "کرمان",
+  "کرمانشاه",
+  "کهگیلویه و بویراحمد",
+  "گلستان",
+  "گیلان",
+  "لرستان",
+  "مازندران",
+  "مرکزی",
+  "هرمزگان",
+  "همدان",
+  "یزد",
+  "قم",
+  "قزوین",
+  "ایلام",
+];
 
 export const AMENITIES = [
   "پارکینگ",
