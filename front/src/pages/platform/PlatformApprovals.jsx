@@ -3,12 +3,14 @@ import { Check, X, Building2, Warehouse, Hourglass, Eye } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/Toast";
 import RequestDetail from "@/components/admin/RequestDetail";
 import RejectDialog from "@/components/admin/RejectDialog";
+import { useSportsMap } from "@/hooks/useSportsMap";
 import {
   listAdminComplexes,
   listAdminHalls,
@@ -18,15 +20,17 @@ import {
   rejectHall,
   listUsers,
 } from "@/api/endpoints";
-import { toFa, formatJalaliDate } from "@/lib/utils";
+import { toFa, formatJalaliDate, formatToman } from "@/lib/utils";
 
 export default function PlatformApprovals() {
   const [pending, setPending] = useState(null);
   const [reapprovals, setReapprovals] = useState(null);
   const [halls, setHalls] = useState(null);
   const [owners, setOwners] = useState({});
+  const [complexMap, setComplexMap] = useState({});
   const [detailId, setDetailId] = useState(null);
   const [reject, setReject] = useState(null); // { type, id, name }
+  const sportsMap = useSportsMap();
 
   async function load() {
     const [cx, hl, us] = await Promise.all([
@@ -38,6 +42,7 @@ export default function PlatformApprovals() {
     setReapprovals(cx.filter((c) => c.pending_changes));
     setHalls(hl);
     setOwners(Object.fromEntries(us.map((u) => [u.id, u])));
+    setComplexMap(Object.fromEntries(cx.map((c) => [c.id, c])));
   }
 
   useEffect(() => {
@@ -120,22 +125,64 @@ export default function PlatformApprovals() {
           ) : (
             <Table>
               <THead>
-                <TR><TH>نام سالن</TH><TH>مجموعه</TH><TH>وضعیت</TH><TH>عملیات</TH></TR>
+                <TR>
+                  <TH>نام سالن</TH>
+                  <TH>مجموعه</TH>
+                  <TH>شهر</TH>
+                  <TH>مالک</TH>
+                  <TH>ورزش‌ها</TH>
+                  <TH>قیمت پایه</TH>
+                  <TH>وضعیت</TH>
+                  <TH>عملیات</TH>
+                </TR>
               </THead>
               <TBody>
-                {halls.map((h) => (
-                  <TR key={h.id}>
-                    <TD className="font-medium">{h.name}</TD>
-                    <TD className="text-muted-foreground">{h.complex_id}</TD>
-                    <TD><StatusBadge kind="hall" status={h.status} /></TD>
-                    <TD>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => approveHallReq(h.id)} title="تأیید"><Check className="h-4 w-4 text-success" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => setReject({ type: "hall", id: h.id, name: h.name })} title="رد"><X className="h-4 w-4 text-destructive" /></Button>
-                      </div>
-                    </TD>
-                  </TR>
-                ))}
+                {halls.map((h) => {
+                  const complex = complexMap[h.complex_id];
+                  const owner = complex && owners[complex.owner_id];
+                  return (
+                    <TR key={h.id}>
+                      <TD className="font-medium">
+                        {h.name}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          ظرفیت {toFa(h.capacity)} نفر
+                          {h.dimensions ? ` · ${h.dimensions} متر` : ""}
+                        </span>
+                      </TD>
+                      <TD>{complex?.name || "—"}</TD>
+                      <TD className="text-muted-foreground">{complex?.city || "—"}</TD>
+                      <TD className="text-sm text-muted-foreground">
+                        {owner?.full_name || "—"}
+                        {owner?.phone && (
+                          <span className="block text-xs" dir="ltr">
+                            {toFa(owner.phone)}
+                          </span>
+                        )}
+                      </TD>
+                      <TD>
+                        <div className="flex flex-wrap gap-1">
+                          {(h.supported_sport_ids || []).length ? (
+                            h.supported_sport_ids.map((sid) => (
+                              <Badge key={sid} tone="muted">
+                                {sportsMap[sid] || sid}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </TD>
+                      <TD className="text-sm">{formatToman(h.base_price)} ت</TD>
+                      <TD><StatusBadge kind="hall" status={h.status} /></TD>
+                      <TD>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => approveHallReq(h.id)} title="تأیید"><Check className="h-4 w-4 text-success" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => setReject({ type: "hall", id: h.id, name: h.name })} title="رد"><X className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                      </TD>
+                    </TR>
+                  );
+                })}
               </TBody>
             </Table>
           )}

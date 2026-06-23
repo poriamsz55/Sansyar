@@ -12,6 +12,7 @@ import {
   Phone,
   PowerOff,
   Hourglass,
+  AlertCircle,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -232,6 +233,8 @@ export default function OwnerVenues() {
         await updateComplex(editingComplex.id, payload);
         if (["approved", "published"].includes(editingComplex.status)) {
           toast("تغییرات ثبت شد و پس از تأیید مدیر ارشد اعمال می‌شود؛ تا آن زمان نسخه قبلی نمایش داده می‌شود");
+        } else if (editingComplex.status === "rejected") {
+          toast("مجموعه ویرایش شد و دوباره برای تأیید مدیر ارشد ارسال شد");
         } else {
           toast("مجموعه به‌روزرسانی شد");
         }
@@ -330,6 +333,8 @@ export default function OwnerVenues() {
         await updateHall(editingHall.id, body);
         if (["approved", "published"].includes(editingHall.status)) {
           toast("تغییرات سالن ثبت شد و برای نمایش در سایت نیاز به تأیید مجدد مدیر ارشد دارد");
+        } else if (editingHall.status === "rejected") {
+          toast("سالن ویرایش شد و دوباره برای تأیید مدیر ارشد ارسال شد");
         } else {
           toast("سالن به‌روزرسانی شد");
         }
@@ -471,6 +476,26 @@ export default function OwnerVenues() {
                     تغییرات شما در انتظار تأیید مدیر ارشد است؛ تا تأیید، نسخه قبلی در سایت نمایش داده می‌شود.
                   </div>
                 )}
+                {c.rejection_reason && !c.pending_changes && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="font-bold">
+                        {c.status === "rejected"
+                          ? "درخواست این مجموعه رد شد"
+                          : "آخرین تغییرات شما رد شد"}
+                      </p>
+                      <p>دلیل مدیر ارشد: {c.rejection_reason}</p>
+                      <button
+                        type="button"
+                        onClick={() => openEditComplex(c)}
+                        className="font-bold underline underline-offset-2"
+                      >
+                        ویرایش و ارسال مجدد
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <h3 className="flex items-center gap-1.5 text-sm font-bold">
                     <Warehouse className="h-4 w-4 text-primary" />
@@ -524,6 +549,21 @@ export default function OwnerVenues() {
                             ))}
                             <StatusBadge kind="hall" status={h.status || (h.is_active ? "approved" : "rejected")} />
                           </div>
+                          {h.status === "rejected" && h.rejection_reason && (
+                            <p className="flex items-start gap-1 text-[11px] text-destructive">
+                              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span>
+                                دلیل رد: {h.rejection_reason}
+                                <button
+                                  type="button"
+                                  onClick={() => openEditHall(c, h)}
+                                  className="mr-1 font-bold underline underline-offset-2"
+                                >
+                                  ویرایش و ارسال مجدد
+                                </button>
+                              </span>
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span className="flex items-center gap-0.5">
                               <Users className="h-3 w-3" />

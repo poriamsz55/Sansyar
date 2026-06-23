@@ -28,6 +28,7 @@ import {
   toFa,
   formatJalaliWeekday,
   formatJalaliDate,
+  formatTimeRange,
 } from "@/lib/utils";
 
 function groupByDay(slots) {
@@ -280,7 +281,7 @@ export default function ComplexDetails() {
                 <span className="font-bold">{selected.hall.name}</span>
                 <span className="text-muted-foreground">
                   {formatJalaliWeekday(selected.slot.starts_at)} ساعت{" "}
-                  {toFa(selected.slot.starts_at.slice(11, 16))}
+                  {formatTimeRange(selected.slot.starts_at, selected.slot.ends_at)}
                 </span>
                 <Badge tone="primary">
                   {formatToman(selected.slot.final_price)} تومان

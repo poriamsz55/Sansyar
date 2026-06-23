@@ -359,18 +359,26 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 		if req.Lat != nil && req.Lng != nil {
 			changes.Location = &GeoJSONPoint{Type: "Point", Coordinates: []float64{*req.Lng, *req.Lat}}
 		}
-		if err := s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"pending_changes": changes, "updated_at": now}}); err != nil {
+		// Re-submitting clears any prior rejection note so the owner sees a clean
+		// "awaiting re-approval" state instead of stale feedback.
+		if err := s.complexes.Update(ctx, id, bson.M{
+			"$set":   bson.M{"pending_changes": changes, "updated_at": now},
+			"$unset": bson.M{"rejection_reason": ""},
+		}); err != nil {
 			return Complex{}, err
 		}
 		return s.complexes.FindByID(ctx, id)
 	}
 
 	update := buildComplexUpdate(req, mobile, landline, now)
-	// Editing a rejected submission re-enters the review queue.
+	mongoUpdate := bson.M{"$set": update}
+	// Editing a rejected submission re-enters the review queue with a clean slate
+	// so the stale rejection note no longer shows in the owner's panel.
 	if item.Status == ComplexRejected {
 		update["status"] = ComplexPendingApproval
+		mongoUpdate["$unset"] = bson.M{"rejection_reason": ""}
 	}
-	if err := s.complexes.Update(ctx, id, bson.M{"$set": update}); err != nil {
+	if err := s.complexes.Update(ctx, id, mongoUpdate); err != nil {
 		return Complex{}, err
 	}
 	return s.complexes.FindByID(ctx, id)
@@ -466,7 +474,14 @@ func (s *Service) approveComplex(ctx context.Context, id string, status string, 
 			"$set":   bson.M{"updated_at": now},
 		}
 		if status == ComplexApproved {
-			update["$set"] = applyComplexChanges(item.PendingChanges, now)
+			// Applying the staged edit also clears any prior rejection note.
+			set := applyComplexChanges(item.PendingChanges, now)
+			update["$set"] = set
+			update["$unset"] = bson.M{"pending_changes": "", "rejection_reason": ""}
+		} else {
+			// Rejecting the staged edit keeps the live version but records why so
+			// the owner can revise and resubmit from their panel.
+			update["$set"] = bson.M{"updated_at": now, "rejection_reason": reason}
 		}
 		if err := s.complexes.Update(ctx, id, update); err != nil {
 			return Complex{}, err

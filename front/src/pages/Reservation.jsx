@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ShieldCheck,
   ArrowRight,
+  CreditCard,
 } from "lucide-react";
 
 import { PageTransition, EmptyState } from "@/components/PageTransition";
@@ -22,7 +23,6 @@ import {
 import { createBooking } from "@/api/endpoints";
 import { toast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
-import { PAYMENT_TYPE } from "@/lib/constants";
 import {
   cn,
   formatToman,
@@ -32,21 +32,10 @@ import {
   formatTimeRange,
 } from "@/lib/utils";
 
-const PAYMENT_OPTIONS = [
-  { value: "full_online", label: PAYMENT_TYPE.full_online, desc: "کل مبلغ به‌صورت آنلاین پرداخت می‌شود." },
-  {
-    value: "deposit_online_remaining_in_person",
-    label: PAYMENT_TYPE.deposit_online_remaining_in_person,
-    desc: "بخشی به‌عنوان بیعانه آنلاین، باقی در محل.",
-  },
-  { value: "full_in_person", label: PAYMENT_TYPE.full_in_person, desc: "پرداخت کامل هنگام حضور در مجموعه." },
-];
-
 export default function Reservation() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [pending, setPending] = useState(undefined);
-  const [payment, setPayment] = useState("full_online");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -60,7 +49,7 @@ export default function Reservation() {
     }
     setSubmitting(true);
     try {
-      await createBooking({ slot_id: pending.slot.id, payment_type: payment });
+      await createBooking({ slot_id: pending.slot.id, payment_type: "full_online" });
       clearPendingReservation();
       navigate("/my-reservations?success=1");
     } catch (err) {
@@ -105,13 +94,7 @@ export default function Reservation() {
   }
 
   const { complex, hall, slot } = pending;
-  const deposit = slot.min_deposit_amount || Math.round(slot.final_price * 0.4);
-  const payable =
-    payment === "full_in_person"
-      ? 0
-      : payment === "deposit_online_remaining_in_person"
-        ? deposit
-        : slot.final_price;
+  const payable = slot.final_price;
 
   return (
     <PageTransition>
@@ -126,11 +109,11 @@ export default function Reservation() {
 
         <h1 className="text-2xl font-extrabold">تأیید و پرداخت رزرو</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          جزئیات رزرو را بررسی کن و روش پرداخت را انتخاب کن.
+          جزئیات رزرو را بررسی و پرداخت را نهایی کن.
         </p>
 
         <div className="mt-6 grid gap-6 md:grid-cols-[1fr_340px]">
-          {/* Details + payment method */}
+          {/* Booking details */}
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -159,38 +142,16 @@ export default function Reservation() {
               <CardHeader>
                 <CardTitle>روش پرداخت</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {PAYMENT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setPayment(opt.value)}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-xl border p-4 text-right transition-all",
-                      payment === opt.value
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:bg-accent"
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border-2",
-                        payment === opt.value
-                          ? "border-primary"
-                          : "border-muted-foreground/40"
-                      )}
-                    >
-                      {payment === opt.value && (
-                        <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      )}
+              <CardContent>
+                <div className="flex items-start gap-3 rounded-xl border border-primary bg-primary/5 p-4">
+                  <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <span>
+                    <span className="block text-sm font-semibold">پرداخت کامل آنلاین</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      کل مبلغ رزرو به‌صورت آنلاین و امن پرداخت می‌شود.
                     </span>
-                    <span>
-                      <span className="block text-sm font-semibold">{opt.label}</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {opt.desc}
-                      </span>
-                    </span>
-                  </button>
-                ))}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -218,9 +179,7 @@ export default function Reservation() {
                 />
                 <PriceRow
                   label="قابل پرداخت اکنون"
-                  value={
-                    payable === 0 ? "پرداخت در محل" : `${formatToman(payable)} تومان`
-                  }
+                  value={`${formatToman(payable)} تومان`}
                   tone="primary"
                   strong
                 />
