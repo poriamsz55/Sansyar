@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 
 import { cn, toFa, formatToman } from "@/lib/utils";
+import { toast } from "@/components/Toast";
 import {
   DAY_START_HOUR,
   DAY_END_HOUR,
@@ -12,6 +13,8 @@ import {
   snap,
   clockLabel,
   occupancy,
+  isLocked,
+  isBooked,
   sessionColors,
   jalaliDayNum,
   sameDay,
@@ -42,6 +45,7 @@ export default function WeekGrid({
   onToggleSelect,
 }) {
   const bodyRef = useRef(null);
+  const scrollRef = useRef(null);
   const dragRef = useRef(null);
   // The browser fires a `click` right after a session pointer interaction; that
   // click bubbles to the column and would otherwise open the new-session dialog
@@ -79,18 +83,24 @@ export default function WeekGrid({
 
   function beginDrag(e, session, mode) {
     if (selectionMode) return;
-    if (session.status === "closed" || session.status === "blocked") return;
     e.preventDefault();
     e.stopPropagation();
-    const { startMin: start, durationMin } = sessionSpan(session);
-    const dayIndex = days.findIndex((d) => sameDay(new Date(session.starts_at), d));
+    // A booked/closed session can be tapped to open its panel but never dragged.
+    const locked = isLocked(session);
     const origin = { x: e.clientX, y: e.clientY };
-    const base = { id: session.id, mode, dayIndex, startMin: start, durationMin, moved: false, session };
-    updateDrag(base);
+    let moved = false;
+
+    if (!locked) {
+      const { startMin: start, durationMin } = sessionSpan(session);
+      const dayIndex = days.findIndex((d) => sameDay(new Date(session.starts_at), d));
+      updateDrag({ id: session.id, mode, dayIndex, startMin: start, durationMin, moved: false, session });
+    }
 
     function onMoveEvt(ev) {
       const movedEnough =
         Math.abs(ev.clientX - origin.x) > DRAG_THRESHOLD || Math.abs(ev.clientY - origin.y) > DRAG_THRESHOLD;
+      if (movedEnough) moved = true;
+      if (locked) return;
       const p = pointFromEvent(ev);
       updateDrag((d) => {
         if (!d) return d;
@@ -110,13 +120,22 @@ export default function WeekGrid({
       window.removeEventListener("pointerup", onUp);
       const d = dragRef.current;
       updateDrag(null);
-      if (!d) return;
       // Swallow the click that the browser dispatches after this pointerup so it
       // can't reach the column's create handler. Reset on the next tick.
       suppressClickRef.current = true;
       setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
+      if (locked) {
+        // Explain why a drag did nothing on a reserved session; otherwise open it.
+        if (moved && isBooked(session)) {
+          toast("این سانس رزرو شده و زمان آن قابل تغییر نیست", "error");
+        } else {
+          onSelect?.(session);
+        }
+        return;
+      }
+      if (!d) return;
       if (!d.moved) {
         onSelect?.(d.session);
         return;
@@ -141,8 +160,14 @@ export default function WeekGrid({
   const hours = [];
   for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) hours.push(h);
 
+  // The grid now spans the full 24 hours; open it scrolled to the morning so the
+  // common daytime sessions are visible, while early/late hours stay reachable.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 6 * HOUR_PX;
+  }, []);
+
   return (
-    <div className="overflow-x-auto">
+    <div ref={scrollRef} className="max-h-[72vh] overflow-auto">
       <div className="flex min-w-[640px]" style={{ direction: "rtl" }}>
         {/* Time gutter (rightmost in RTL) */}
         <div className="w-12 shrink-0 pt-10">
@@ -265,7 +290,7 @@ function SessionBlock({
   onPointerDownBlock,
   onPointerDownResize,
 }) {
-  const locked = session.status === "closed" || session.status === "blocked";
+  const locked = isLocked(session);
   const compact = height < 44;
   return (
     <div
@@ -289,14 +314,12 @@ function SessionBlock({
       {!compact && (
         <>
           <div className="truncate">{session.title || formatToman(session.final_price) + " ت"}</div>
-          <div className="mt-0.5 flex items-center gap-1">
-            <div className="h-1 flex-1 overflow-hidden rounded-full bg-black/10">
-              <div className={cn("h-full", colors.bar)} style={{ width: `${occ.pct}%` }} />
+          {occ.booked > 0 && (
+            <div className="mt-0.5 flex items-center gap-1 font-medium">
+              <Lock className="h-3 w-3 shrink-0" />
+              رزرو شده
             </div>
-            <span className="shrink-0 tabular-nums">
-              {toFa(occ.booked)}/{toFa(occ.capacity)}
-            </span>
-          </div>
+          )}
         </>
       )}
       {!selectionMode && !locked && (

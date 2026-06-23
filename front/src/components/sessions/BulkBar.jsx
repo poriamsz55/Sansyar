@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/skeleton";
 import { toast } from "@/components/Toast";
+import JalaliDatePicker from "@/components/ui/JalaliDatePicker";
 import { copyDay, duplicateWeek, blockRange, bulkUpdateSessions } from "@/api/endpoints";
-import { toFa, formatToman } from "@/lib/utils";
+import { toFa, formatToman, formatJalaliDate } from "@/lib/utils";
 import { localDateStr, startOfWeek, addDays } from "@/lib/sessions";
 
 /**
@@ -99,11 +100,11 @@ function CopyDayDialog({ hall, anchor, onClose, onDone }) {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <Label>از روز</Label>
-          <Input type="date" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <JalaliDatePicker value={from} onChange={setFrom} />
         </div>
         <div className="space-y-1.5">
           <Label>به روز</Label>
-          <Input type="date" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} />
+          <JalaliDatePicker value={to} onChange={setTo} />
         </div>
         <DialogActions saving={saving} onClose={onClose} onSubmit={submit} label="کپی" />
       </div>
@@ -134,7 +135,7 @@ function DuplicateWeekDialog({ hall, anchor, onClose, onDone }) {
     <Dialog open onClose={onClose} title="تکرار برنامه هفته" description="برنامه هفته جاری را برای هفته‌های بعد تکرار کنید.">
       <div className="space-y-4">
         <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-          هفته مبدأ از <b dir="ltr">{weekStart}</b> (شنبه) آغاز می‌شود.
+          هفته مبدأ از <b>{formatJalaliDate(weekStart)}</b> (شنبه) آغاز می‌شود.
         </p>
         <div className="space-y-1.5">
           <Label>برای چند هفته بعد؟</Label>
@@ -148,7 +149,7 @@ function DuplicateWeekDialog({ hall, anchor, onClose, onDone }) {
 
 function BlockRangeDialog({ hall, anchor, onClose, onDone }) {
   const day = localDateStr(anchor);
-  const [form, setForm] = useState({ date: day, from: "00:00", to: "23:59", status: "closed", reason: "" });
+  const [form, setForm] = useState({ date: day, from: "00:00", to: "00:00", status: "closed", reason: "" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -156,7 +157,11 @@ function BlockRangeDialog({ hall, anchor, onClose, onDone }) {
     setSaving(true);
     try {
       const fromIso = new Date(`${form.date}T${form.from}:00`).toISOString();
-      const toIso = new Date(`${form.date}T${form.to}:00`).toISOString();
+      // A "to" of 00:00 (or any value not after "from") means end-of-day, so it
+      // rolls over to the next day's midnight rather than collapsing the range.
+      const toDate = new Date(`${form.date}T${form.to}:00`);
+      if (form.to <= form.from) toDate.setDate(toDate.getDate() + 1);
+      const toIso = toDate.toISOString();
       const res = await blockRange({ hall_id: hall.id, from: fromIso, to: toIso, status: form.status, reason: form.reason });
       toast(`${toFa(res.updated || 0)} سانس به‌روزرسانی شد`);
       onDone();
@@ -173,7 +178,7 @@ function BlockRangeDialog({ hall, anchor, onClose, onDone }) {
       <div className="space-y-4">
         <div className="space-y-1.5">
           <Label>تاریخ</Label>
-          <Input type="date" dir="ltr" value={form.date} onChange={(e) => set("date", e.target.value)} />
+          <JalaliDatePicker value={form.date} onChange={(v) => set("date", v)} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -205,7 +210,7 @@ function BlockRangeDialog({ hall, anchor, onClose, onDone }) {
 }
 
 function BulkEditDialog({ ids, onClose, onDone }) {
-  const [form, setForm] = useState({ setPrice: false, base_price: 2000000, setDiscount: false, discount_percent: 0, setCapacity: false, capacity: 1, setStatus: false, status: "available" });
+  const [form, setForm] = useState({ setPrice: false, base_price: 2000000, setDiscount: false, discount_percent: 0, setStatus: false, status: "available" });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -213,7 +218,6 @@ function BulkEditDialog({ ids, onClose, onDone }) {
     const payload = { slot_ids: ids };
     if (form.setPrice) payload.base_price = Number(form.base_price);
     if (form.setDiscount) payload.discount_percent = Number(form.discount_percent);
-    if (form.setCapacity) payload.capacity = Number(form.capacity);
     if (form.setStatus) payload.status = form.status;
     if (Object.keys(payload).length === 1) {
       toast("حداقل یک تغییر را انتخاب کنید", "error");
@@ -241,9 +245,6 @@ function BulkEditDialog({ ids, onClose, onDone }) {
         </BulkRow>
         <BulkRow enabled={form.setDiscount} onToggle={(v) => set("setDiscount", v)} label="درصد تخفیف">
           <Input type="number" min={0} max={100} value={form.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} disabled={!form.setDiscount} />
-        </BulkRow>
-        <BulkRow enabled={form.setCapacity} onToggle={(v) => set("setCapacity", v)} label="ظرفیت">
-          <Input type="number" min={1} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} disabled={!form.setCapacity} />
         </BulkRow>
         <BulkRow enabled={form.setStatus} onToggle={(v) => set("setStatus", v)} label="وضعیت">
           <Select value={form.status} onChange={(e) => set("status", e.target.value)} disabled={!form.setStatus}>

@@ -4,8 +4,11 @@ import "leaflet/dist/leaflet.css";
 import { Search, LocateFixed, Loader2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { cn, toFa } from "@/lib/utils";
+
+// Wait this long after the user stops typing before firing a search.
+const SEARCH_DEBOUNCE_MS = 1000;
+const MIN_QUERY_LEN = 3;
 
 const DEFAULT_CENTER = { lat: 35.6892, lng: 51.389 }; // تهران
 
@@ -22,12 +25,18 @@ const pinIcon = L.divIcon({
  * point, or search an address (OpenStreetMap Nominatim). Reports `{ lat, lng }`
  * via onChange — no manual coordinate entry anywhere.
  */
-export function MapPicker({ value, onChange, className }) {
+export function MapPicker({ value, onChange, province, className }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Cancels the in-flight geocode request so a slow earlier response can't
+  // overwrite a newer one (race condition).
+  const abortRef = useRef(null);
+  // Set right after picking a suggestion so the resulting query change does not
+  // immediately trigger another search for the address we just filled in.
+  const justPickedRef = useRef(false);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null); // null = no search yet
@@ -72,33 +81,69 @@ export function MapPicker({ value, onChange, className }) {
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
+      abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function search() {
-    const q = query.trim();
-    if (!q || searching) return;
+  // Geocode the address, biasing results to the selected province so search is
+  // scoped to where the venue actually is. Cancels any previous request first.
+  async function runSearch(raw) {
+    const q = raw.trim();
+    abortRef.current?.abort();
+    if (q.length < MIN_QUERY_LEN) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
     setSearching(true);
-    setResults(null);
     try {
+      const scoped = province ? `${q}، ${province}` : q;
       const params = new URLSearchParams({
         format: "json",
-        q,
-        limit: "5",
+        q: scoped,
+        limit: "6",
+        addressdetails: "1",
         "accept-language": "fa",
         countrycodes: "ir",
       });
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`);
-      setResults(await res.json());
-    } catch {
-      setResults([]);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      // Ignore a stale response that lost the race to a newer request.
+      if (controller.signal.aborted) return;
+      setResults(Array.isArray(data) ? data : []);
+    } catch (err) {
+      if (err?.name !== "AbortError") setResults([]);
     } finally {
-      setSearching(false);
+      if (abortRef.current === controller) setSearching(false);
     }
   }
 
+  // Debounced auto-search: fire ~1s after the user stops typing — no button.
+  useEffect(() => {
+    if (justPickedRef.current) {
+      justPickedRef.current = false;
+      return undefined;
+    }
+    const q = query.trim();
+    if (q.length < MIN_QUERY_LEN) {
+      abortRef.current?.abort();
+      setResults(null);
+      setSearching(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, province]);
+
   function pickResult(r) {
+    abortRef.current?.abort();
+    justPickedRef.current = true; // don't auto-search the address we just filled in
     setResults(null);
     setQuery(r.display_name);
     place(parseFloat(r.lat), parseFloat(r.lon), { pan: true, zoom: 16 });
@@ -120,30 +165,30 @@ export function MapPicker({ value, onChange, className }) {
   return (
     <div className={cn("space-y-2", className)}>
       <div className="relative">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  search();
-                }
-              }}
-              placeholder="جستجوی آدرس یا محله…"
-              className="pr-10"
-            />
-          </div>
-          <Button type="button" variant="secondary" onClick={search} disabled={searching}>
-            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : "جستجو"}
-          </Button>
+        <div className="relative">
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runSearch(query);
+              }
+            }}
+            placeholder={province ? `جستجوی آدرس در ${province}…` : "ابتدا استان را انتخاب کنید…"}
+            className="pr-10 pl-9"
+          />
+          {searching && (
+            <Loader2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
         </div>
         {results !== null && (
           <div className="absolute inset-x-0 top-full z-[1100] mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-soft-lg">
             {results.length === 0 ? (
-              <p className="px-3 py-2.5 text-sm text-muted-foreground">نتیجه‌ای یافت نشد</p>
+              <p className="px-3 py-2.5 text-sm text-muted-foreground">
+                {searching ? "در حال جستجو…" : "نتیجه‌ای یافت نشد"}
+              </p>
             ) : (
               results.map((r) => (
                 <button

@@ -4,7 +4,7 @@
 
 import { toFa } from "./utils";
 
-export const DAY_START_HOUR = 6; // calendar visible window start
+export const DAY_START_HOUR = 0; // calendar shows the full 24-hour day
 export const DAY_END_HOUR = 24; // exclusive end (midnight)
 export const SNAP_MINUTES = 15; // drag snap granularity
 
@@ -133,15 +133,30 @@ export function clockLabel(minutes) {
 
 // ---- Occupancy / status ----------------------------------------------------
 
-/** Effective fill state from booked_count vs capacity. */
+/**
+ * A session is reserved/booked (and therefore locked from time changes) when it
+ * carries a booking or sits in the reserved/full state.
+ */
+export function isBooked(session) {
+  return (session.booked_count || 0) > 0 || session.status === "reserved" || session.fill === "full";
+}
+
+/**
+ * A session can't be moved/resized/rescheduled when it is booked or in an
+ * operational lock state (closed/blocked).
+ */
+export function isLocked(session) {
+  return isBooked(session) || session.status === "closed" || session.status === "blocked";
+}
+
+/**
+ * Binary occupancy: a session holds at most one booking, so it is either
+ * available or fully booked (no per-session capacity any more).
+ */
 export function occupancy(session) {
-  const capacity = session.capacity > 0 ? session.capacity : 1;
-  const booked = session.booked_count || 0;
-  const remaining = Math.max(0, capacity - booked);
-  let fill = session.fill;
-  if (!fill) fill = booked >= capacity ? "full" : booked > 0 ? "partial" : "available";
-  const pct = Math.min(100, Math.round((booked / capacity) * 100));
-  return { capacity, booked, remaining, fill, pct };
+  const booked = isBooked(session) ? 1 : 0;
+  const fill = booked ? "full" : "available";
+  return { booked, remaining: 1 - booked, fill, pct: booked ? 100 : 0 };
 }
 
 export function revenueEstimate(session) {
@@ -175,8 +190,7 @@ export function sessionColors(session) {
 
 export const STATUS_LEGEND = [
   { key: "available", label: "آزاد", dot: "bg-emerald-500" },
-  { key: "partial", label: "نیمه‌پر", dot: "bg-amber-500" },
-  { key: "full", label: "تکمیل", dot: "bg-rose-500" },
+  { key: "full", label: "رزرو شده", dot: "bg-rose-500" },
   { key: "closed", label: "تعطیل", dot: "bg-slate-400" },
   { key: "holiday", label: "تعطیل رسمی", dot: "bg-violet-400" },
   { key: "maintenance", label: "تعمیرات", dot: "bg-orange-400" },

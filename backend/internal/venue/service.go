@@ -16,7 +16,49 @@ import (
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/errormap"
 	"sansyar/backend/pkg/rbac"
+	"sansyar/backend/pkg/validator"
 )
+
+// sanitizeContacts normalizes optional mobile/landline contact numbers to a
+// canonical form (Iranian mobile as 09XXXXXXXXX, landline with leading-0 area
+// code). Empty values pass through; non-empty invalid values are rejected.
+func sanitizeContacts(mobile, landline string) (string, string, error) {
+	m, ok := validator.NormalizeIranMobile(mobile)
+	if !ok {
+		return "", "", fmt.Errorf("%w: شماره موبایل نامعتبر است", errormap.ErrInvalidInput)
+	}
+	l, ok := validator.NormalizeIranLandline(landline)
+	if !ok {
+		return "", "", fmt.Errorf("%w: شماره تلفن ثابت نامعتبر است", errormap.ErrInvalidInput)
+	}
+	return m, l, nil
+}
+
+// legacyContactPhone is the value kept in the legacy contact_phone field used by
+// public pages: the landline is preferred (the venue's main line), then the
+// mobile, then any pre-existing value.
+func legacyContactPhone(mobile, landline, fallback string) string {
+	if landline != "" {
+		return landline
+	}
+	if mobile != "" {
+		return mobile
+	}
+	return fallback
+}
+
+// isReserved reports whether a session already carries a booking and so must be
+// locked from time changes (move / resize / reschedule).
+func isReserved(slot Slot) bool {
+	return slot.BookedCount > 0 || slot.Status == SlotReserved || slot.BookingID != ""
+}
+
+// hallModerated reports whether a hall has already been through moderation
+// (approved, published, or rejected) and so a meaningful content edit must
+// re-enter the approval queue before it can become live.
+func hallModerated(status string) bool {
+	return status == HallApproved || status == HallPublished || status == HallRejected
+}
 
 type Service struct {
 	complexes *database.Repository[Complex]
@@ -57,7 +99,7 @@ func (s *Service) listComplexesPaginated(ctx context.Context, params listComplex
 		filter["$or"] = bson.A{
 			bson.M{"name": bson.M{"$regex": re, "$options": "i"}},
 			bson.M{"city": bson.M{"$regex": re, "$options": "i"}},
-			bson.M{"neighborhood": bson.M{"$regex": re, "$options": "i"}},
+			bson.M{"address": bson.M{"$regex": re, "$options": "i"}},
 		}
 	}
 
@@ -189,8 +231,8 @@ func (s *Service) summarizeComplex(ctx context.Context, item Complex) (ComplexLi
 		"complex_id": item.ID,
 		"status":     SlotAvailable,
 		"starts_at":  bson.M{"$gte": now},
-		// Multi-capacity: a session only counts as available while it has room.
-		"$expr": bson.M{"$lt": bson.A{"$booked_count", bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$capacity", 0}}, "$capacity", 1}}}},
+		// A session counts as available only while it holds no booking.
+		"booked_count": bson.M{"$lt": 1},
 	}
 	slots, err := s.slots.FindAll(ctx, slotFilter, database.Page{Limit: 500})
 	if err != nil {
@@ -235,6 +277,10 @@ func defaultCoordinates(lat, lng float64) (float64, float64) {
 func (s *Service) createComplex(ctx context.Context, ownerID string, req CreateComplexRequest) (Complex, error) {
 	now := time.Now().UTC()
 	lat, lng := defaultCoordinates(req.Lat, req.Lng)
+	mobile, landline, err := sanitizeContacts(req.ContactMobile, req.ContactLandline)
+	if err != nil {
+		return Complex{}, err
+	}
 	item := Complex{
 		ID:                 uuid.NewString(),
 		OwnerID:            ownerID,
@@ -243,10 +289,11 @@ func (s *Service) createComplex(ctx context.Context, ownerID string, req CreateC
 		Description:        req.Description,
 		Province:           req.Province,
 		City:               req.City,
-		Neighborhood:       req.Neighborhood,
 		Address:            req.Address,
 		Location:           GeoJSONPoint{Type: "Point", Coordinates: []float64{lng, lat}},
-		ContactPhone:       req.ContactPhone,
+		ContactPhone:       legacyContactPhone(mobile, landline, req.ContactPhone),
+		ContactMobile:      mobile,
+		ContactLandline:    landline,
 		Images:             req.Images,
 		Amenities:          req.Amenities,
 		Rules:              req.Rules,
@@ -287,21 +334,27 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 
 	now := time.Now().UTC()
 
+	mobile, landline, err := sanitizeContacts(req.ContactMobile, req.ContactLandline)
+	if err != nil {
+		return Complex{}, err
+	}
+
 	// Live complexes keep serving their approved data: the edit is staged as
 	// pending changes and only goes live once a super admin re-approves it.
 	if complexLive(item.Status) {
 		changes := ComplexChanges{
-			Name:         req.Name,
-			Description:  req.Description,
-			Province:     req.Province,
-			City:         req.City,
-			Neighborhood: req.Neighborhood,
-			Address:      req.Address,
-			ContactPhone: req.ContactPhone,
-			Images:       req.Images,
-			Amenities:    req.Amenities,
-			Rules:        req.Rules,
-			SubmittedAt:  now,
+			Name:            req.Name,
+			Description:     req.Description,
+			Province:        req.Province,
+			City:            req.City,
+			Address:         req.Address,
+			ContactPhone:    legacyContactPhone(mobile, landline, req.ContactPhone),
+			ContactMobile:   mobile,
+			ContactLandline: landline,
+			Images:          req.Images,
+			Amenities:       req.Amenities,
+			Rules:           req.Rules,
+			SubmittedAt:     now,
 		}
 		if req.Lat != nil && req.Lng != nil {
 			changes.Location = &GeoJSONPoint{Type: "Point", Coordinates: []float64{*req.Lng, *req.Lat}}
@@ -312,7 +365,7 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 		return s.complexes.FindByID(ctx, id)
 	}
 
-	update := buildComplexUpdate(req, now)
+	update := buildComplexUpdate(req, mobile, landline, now)
 	// Editing a rejected submission re-enters the review queue.
 	if item.Status == ComplexRejected {
 		update["status"] = ComplexPendingApproval
@@ -323,7 +376,7 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 	return s.complexes.FindByID(ctx, id)
 }
 
-func buildComplexUpdate(req UpdateComplexRequest, now time.Time) bson.M {
+func buildComplexUpdate(req UpdateComplexRequest, mobile, landline string, now time.Time) bson.M {
 	update := bson.M{"updated_at": now}
 	if req.Name != "" {
 		update["name"] = req.Name
@@ -337,13 +390,17 @@ func buildComplexUpdate(req UpdateComplexRequest, now time.Time) bson.M {
 	if req.City != "" {
 		update["city"] = req.City
 	}
-	if req.Neighborhood != "" {
-		update["neighborhood"] = req.Neighborhood
-	}
 	if req.Address != "" {
 		update["address"] = req.Address
 	}
-	if req.ContactPhone != "" {
+	// The owner form sends the split mobile/landline pair; the legacy admin form
+	// sends only contact_phone. Update whichever fields were provided, and never
+	// blank out the others (so a legacy-only edit can't wipe the split values).
+	if mobile != "" || landline != "" {
+		update["contact_mobile"] = mobile
+		update["contact_landline"] = landline
+		update["contact_phone"] = legacyContactPhone(mobile, landline, req.ContactPhone)
+	} else if req.ContactPhone != "" {
 		update["contact_phone"] = req.ContactPhone
 	}
 	if req.Images != nil {
@@ -447,14 +504,17 @@ func applyComplexChanges(ch *ComplexChanges, now time.Time) bson.M {
 	if ch.City != "" {
 		set["city"] = ch.City
 	}
-	if ch.Neighborhood != "" {
-		set["neighborhood"] = ch.Neighborhood
-	}
 	if ch.Address != "" {
 		set["address"] = ch.Address
 	}
 	if ch.ContactPhone != "" {
 		set["contact_phone"] = ch.ContactPhone
+	}
+	if ch.ContactMobile != "" {
+		set["contact_mobile"] = ch.ContactMobile
+	}
+	if ch.ContactLandline != "" {
+		set["contact_landline"] = ch.ContactLandline
 	}
 	if ch.Images != nil {
 		set["images"] = ch.Images
@@ -564,39 +624,62 @@ func (s *Service) updateHall(ctx context.Context, ownerID string, id string, req
 	}
 
 	update := bson.M{"updated_at": time.Now().UTC()}
+	// content tracks whether a moderated field changed. A purely operational
+	// toggle (activate/deactivate) is not a content edit and must not re-trigger
+	// moderation.
+	content := false
 	if req.Name != "" {
 		update["name"] = req.Name
+		content = true
 	}
 	if req.SupportedSportIDs != nil {
 		update["supported_sport_ids"] = req.SupportedSportIDs
+		content = true
 	}
 	if req.Capacity != nil {
 		update["capacity"] = *req.Capacity
+		content = true
 	}
 	if req.IndoorOutdoor != "" {
 		update["indoor_outdoor"] = req.IndoorOutdoor
+		content = true
 	}
 	if req.FloorType != "" {
 		update["floor_type"] = req.FloorType
+		content = true
 	}
 	if req.Dimensions != "" {
 		update["dimensions"] = req.Dimensions
+		content = true
 	}
 	if req.Amenities != nil {
 		update["amenities"] = req.Amenities
+		content = true
 	}
 	if req.GenderRule != "" {
 		update["gender_rule"] = req.GenderRule
+		content = true
 	}
 	if req.BasePrice != nil {
 		update["base_price"] = *req.BasePrice
+		content = true
 	}
 	if req.Images != nil {
 		update["images"] = req.Images
+		content = true
 	}
 	if req.IsActive != nil {
 		update["is_active"] = *req.IsActive
 	}
+
+	// A meaningful content edit to an already-moderated hall must go back through
+	// approval: the change cannot become live until a super admin re-approves it.
+	// Operational toggles (is_active only) keep the current status.
+	if content && hallModerated(item.Status) {
+		update["status"] = HallPendingApproval
+		update["rejection_reason"] = ""
+	}
+
 	if err := s.halls.Update(ctx, id, bson.M{"$set": update}); err != nil {
 		return Hall{}, err
 	}
@@ -660,10 +743,6 @@ func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlot
 	if status == "" {
 		status = SlotAvailable
 	}
-	capacity := req.Capacity
-	if capacity <= 0 {
-		capacity = 1
-	}
 	paymentPolicy := req.PaymentPolicy
 	if paymentPolicy == "" {
 		paymentPolicy = "full_online"
@@ -682,7 +761,6 @@ func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlot
 		BasePrice:                  req.BasePrice,
 		FinalPrice:                 finalPrice,
 		DiscountPercent:            req.DiscountPercent,
-		Capacity:                   capacity,
 		BookedCount:                0,
 		Status:                     status,
 		PaymentPolicy:              paymentPolicy,
@@ -724,6 +802,10 @@ func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req
 	now := time.Now().UTC()
 	update := bson.M{"updated_at": now}
 
+	// A booked/reserved session is locked: its time cannot be moved, resized, or
+	// rescheduled by the owner, since customers already hold that exact slot.
+	locked := isReserved(item)
+
 	if req.Status != nil {
 		if !isValidOperationalStatus(*req.Status) {
 			return Slot{}, fmt.Errorf("%w: invalid session status", errormap.ErrInvalidInput)
@@ -748,7 +830,12 @@ func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req
 	if req.EndsAt != nil {
 		ends = req.EndsAt.UTC()
 	}
-	if req.StartsAt != nil || req.EndsAt != nil {
+	timeChanged := (req.StartsAt != nil && !starts.Equal(item.StartsAt)) ||
+		(req.EndsAt != nil && !ends.Equal(item.EndsAt))
+	if timeChanged {
+		if locked {
+			return Slot{}, fmt.Errorf("%w: this session is reserved and its time cannot be changed", errormap.ErrConflict)
+		}
 		if !ends.After(starts) {
 			return Slot{}, fmt.Errorf("%w: end must be after start", errormap.ErrInvalidInput)
 		}
@@ -773,16 +860,6 @@ func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req
 		update["base_price"] = base
 		update["discount_percent"] = discount
 		update["final_price"] = base - (base * int64(discount) / 100)
-	}
-
-	if req.Capacity != nil {
-		if *req.Capacity < item.BookedCount {
-			return Slot{}, fmt.Errorf("%w: capacity cannot be below current bookings (%d)", errormap.ErrInvalidInput, item.BookedCount)
-		}
-		if *req.Capacity < 1 {
-			return Slot{}, fmt.Errorf("%w: capacity must be at least 1", errormap.ErrInvalidInput)
-		}
-		update["capacity"] = *req.Capacity
 	}
 
 	if err := s.slots.Update(ctx, id, bson.M{"$set": update}); err != nil {
@@ -840,7 +917,7 @@ func (s *Service) mapVenues(ctx context.Context, lat float64, lng float64, radiu
 				"cond": bson.M{"$and": bson.A{
 					bson.M{"$eq": bson.A{"$$slot.status", SlotAvailable}},
 					bson.M{"$gte": bson.A{"$$slot.starts_at", time.Now().UTC()}},
-					bson.M{"$lt": bson.A{"$$slot.booked_count", bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$$slot.capacity", 0}}, "$$slot.capacity", 1}}}},
+					bson.M{"$lt": bson.A{"$$slot.booked_count", 1}},
 				}},
 			}},
 		}},
@@ -848,7 +925,6 @@ func (s *Service) mapVenues(ctx context.Context, lat float64, lng float64, radiu
 			"_id":                  1,
 			"name":                 1,
 			"city":                 1,
-			"neighborhood":         1,
 			"location":             1,
 			"rating_avg":           1,
 			"distance_meters":      1,

@@ -15,11 +15,10 @@ const (
 	HallRejected        = "rejected"
 	HallPublished       = "published"
 
-	// Slot.Status is the operational state of a session. The booking fill level
-	// (available / partially booked / full) is derived from BookedCount vs
-	// Capacity for display and is not stored here.
+	// Slot.Status is the operational state of a session. A session is open for
+	// booking while BookedCount is 0; once booked it is locked from time edits.
 	SlotAvailable    = "available" // open for booking
-	SlotReserved     = "reserved"  // legacy single-capacity reserved state
+	SlotReserved     = "reserved"  // booked/reserved session (locked)
 	SlotBlocked      = "blocked"
 	SlotClosed       = "closed"
 	SlotHoliday      = "holiday"
@@ -44,32 +43,37 @@ type (
 	// moderation. The live fields keep serving the public site until a super
 	// admin approves the changes; rejecting discards them.
 	ComplexChanges struct {
-		Name         string        `json:"name,omitempty" bson:"name,omitempty"`
-		Description  string        `json:"description,omitempty" bson:"description,omitempty"`
-		Province     string        `json:"province,omitempty" bson:"province,omitempty"`
-		City         string        `json:"city,omitempty" bson:"city,omitempty"`
-		Neighborhood string        `json:"neighborhood,omitempty" bson:"neighborhood,omitempty"`
-		Address      string        `json:"address,omitempty" bson:"address,omitempty"`
-		Location     *GeoJSONPoint `json:"location,omitempty" bson:"location,omitempty"`
-		ContactPhone string        `json:"contact_phone,omitempty" bson:"contact_phone,omitempty"`
-		Images       []string      `json:"images,omitempty" bson:"images,omitempty"`
-		Amenities    []string      `json:"amenities,omitempty" bson:"amenities,omitempty"`
-		Rules        []string      `json:"rules,omitempty" bson:"rules,omitempty"`
-		SubmittedAt  time.Time     `json:"submitted_at" bson:"submitted_at"`
+		Name            string        `json:"name,omitempty" bson:"name,omitempty"`
+		Description     string        `json:"description,omitempty" bson:"description,omitempty"`
+		Province        string        `json:"province,omitempty" bson:"province,omitempty"`
+		City            string        `json:"city,omitempty" bson:"city,omitempty"`
+		Address         string        `json:"address,omitempty" bson:"address,omitempty"`
+		Location        *GeoJSONPoint `json:"location,omitempty" bson:"location,omitempty"`
+		ContactPhone    string        `json:"contact_phone,omitempty" bson:"contact_phone,omitempty"`
+		ContactMobile   string        `json:"contact_mobile,omitempty" bson:"contact_mobile,omitempty"`
+		ContactLandline string        `json:"contact_landline,omitempty" bson:"contact_landline,omitempty"`
+		Images          []string      `json:"images,omitempty" bson:"images,omitempty"`
+		Amenities       []string      `json:"amenities,omitempty" bson:"amenities,omitempty"`
+		Rules           []string      `json:"rules,omitempty" bson:"rules,omitempty"`
+		SubmittedAt     time.Time     `json:"submitted_at" bson:"submitted_at"`
 	}
 
 	Complex struct {
-		ID                 string             `json:"id" bson:"_id"`
-		OwnerID            string             `json:"owner_id" bson:"owner_id"`
-		Name               string             `json:"name" bson:"name"`
-		Slug               string             `json:"slug" bson:"slug"`
-		Description        string             `json:"description" bson:"description"`
-		Province           string             `json:"province" bson:"province"`
-		City               string             `json:"city" bson:"city"`
-		Neighborhood       string             `json:"neighborhood" bson:"neighborhood"`
-		Address            string             `json:"address" bson:"address"`
-		Location           GeoJSONPoint       `json:"location" bson:"location"`
+		ID          string       `json:"id" bson:"_id"`
+		OwnerID     string       `json:"owner_id" bson:"owner_id"`
+		Name        string       `json:"name" bson:"name"`
+		Slug        string       `json:"slug" bson:"slug"`
+		Description string       `json:"description" bson:"description"`
+		Province    string       `json:"province" bson:"province"`
+		City        string       `json:"city" bson:"city"`
+		Address     string       `json:"address" bson:"address"`
+		Location    GeoJSONPoint `json:"location" bson:"location"`
+		// ContactPhone is the legacy single contact field kept for backward
+		// compatibility with existing records and public pages. New edits write
+		// the split ContactMobile / ContactLandline fields below.
 		ContactPhone       string             `json:"contact_phone" bson:"contact_phone"`
+		ContactMobile      string             `json:"contact_mobile" bson:"contact_mobile"`
+		ContactLandline    string             `json:"contact_landline" bson:"contact_landline"`
 		Images             []string           `json:"images" bson:"images"`
 		Amenities          []string           `json:"amenities" bson:"amenities"`
 		Rules              []string           `json:"rules" bson:"rules"`
@@ -104,18 +108,19 @@ type (
 	}
 
 	Slot struct {
-		ID                         string             `json:"id" bson:"_id"`
-		HallID                     string             `json:"hall_id" bson:"hall_id"`
-		ComplexID                  string             `json:"complex_id" bson:"complex_id"`
-		SportID                    string             `json:"sport_id" bson:"sport_id"`
-		Title                      string             `json:"title,omitempty" bson:"title,omitempty"`
-		StartsAt                   time.Time          `json:"starts_at" bson:"starts_at"`
-		EndsAt                     time.Time          `json:"ends_at" bson:"ends_at"`
-		DurationMinutes            int                `json:"duration_minutes" bson:"duration_minutes"`
-		BasePrice                  int64              `json:"base_price" bson:"base_price"`
-		FinalPrice                 int64              `json:"final_price" bson:"final_price"`
-		DiscountPercent            int                `json:"discount_percent" bson:"discount_percent"`
-		Capacity                   int                `json:"capacity" bson:"capacity"`
+		ID              string    `json:"id" bson:"_id"`
+		HallID          string    `json:"hall_id" bson:"hall_id"`
+		ComplexID       string    `json:"complex_id" bson:"complex_id"`
+		SportID         string    `json:"sport_id" bson:"sport_id"`
+		Title           string    `json:"title,omitempty" bson:"title,omitempty"`
+		StartsAt        time.Time `json:"starts_at" bson:"starts_at"`
+		EndsAt          time.Time `json:"ends_at" bson:"ends_at"`
+		DurationMinutes int       `json:"duration_minutes" bson:"duration_minutes"`
+		BasePrice       int64     `json:"base_price" bson:"base_price"`
+		FinalPrice      int64     `json:"final_price" bson:"final_price"`
+		DiscountPercent int       `json:"discount_percent" bson:"discount_percent"`
+		// BookedCount is 0 for an open session and 1 once it is booked; a session
+		// holds at most one booking (no per-session capacity).
 		BookedCount                int                `json:"booked_count" bson:"booked_count"`
 		Status                     string             `json:"status" bson:"status"`
 		PaymentPolicy              string             `json:"payment_policy" bson:"payment_policy"`
@@ -136,11 +141,12 @@ type (
 		Description        string             `json:"description"`
 		Province           string             `json:"province"`
 		City               string             `json:"city" validate:"required"`
-		Neighborhood       string             `json:"neighborhood"`
 		Address            string             `json:"address" validate:"required"`
 		Lat                float64            `json:"lat"`
 		Lng                float64            `json:"lng"`
 		ContactPhone       string             `json:"contact_phone"`
+		ContactMobile      string             `json:"contact_mobile"`
+		ContactLandline    string             `json:"contact_landline"`
 		Images             []string           `json:"images"`
 		Amenities          []string           `json:"amenities"`
 		Rules              []string           `json:"rules"`
@@ -148,18 +154,19 @@ type (
 	}
 
 	UpdateComplexRequest struct {
-		Name         string   `json:"name"`
-		Description  string   `json:"description"`
-		Province     string   `json:"province"`
-		City         string   `json:"city"`
-		Neighborhood string   `json:"neighborhood"`
-		Address      string   `json:"address"`
-		Lat          *float64 `json:"lat"`
-		Lng          *float64 `json:"lng"`
-		ContactPhone string   `json:"contact_phone"`
-		Images       []string `json:"images"`
-		Amenities    []string `json:"amenities"`
-		Rules        []string `json:"rules"`
+		Name            string   `json:"name"`
+		Description     string   `json:"description"`
+		Province        string   `json:"province"`
+		City            string   `json:"city"`
+		Address         string   `json:"address"`
+		Lat             *float64 `json:"lat"`
+		Lng             *float64 `json:"lng"`
+		ContactPhone    string   `json:"contact_phone"`
+		ContactMobile   string   `json:"contact_mobile"`
+		ContactLandline string   `json:"contact_landline"`
+		Images          []string `json:"images"`
+		Amenities       []string `json:"amenities"`
+		Rules           []string `json:"rules"`
 	}
 
 	UpdateHallRequest struct {
@@ -177,8 +184,8 @@ type (
 	}
 
 	// UpdateSlotRequest is a partial edit of one session. Every field is optional
-	// so the calendar can patch just a price, a capacity, a drag-resized time, or
-	// an operational status without resending the whole record.
+	// so the calendar can patch just a price, a drag-resized time, or an
+	// operational status without resending the whole record.
 	UpdateSlotRequest struct {
 		Status          *string    `json:"status"`
 		Title           *string    `json:"title"`
@@ -186,7 +193,6 @@ type (
 		EndsAt          *time.Time `json:"ends_at"`
 		BasePrice       *int64     `json:"base_price"`
 		DiscountPercent *int       `json:"discount_percent"`
-		Capacity        *int       `json:"capacity"`
 		Notes           *string    `json:"notes"`
 		AdminComment    *string    `json:"admin_comment"`
 	}
@@ -228,7 +234,6 @@ type (
 		EndsAt           time.Time `json:"ends_at" validate:"required"`
 		BasePrice        int64     `json:"base_price" validate:"required"`
 		DiscountPercent  int       `json:"discount_percent"`
-		Capacity         int       `json:"capacity"`
 		PaymentPolicy    string    `json:"payment_policy"`
 		MinDepositAmount int64     `json:"min_deposit_amount"`
 		Status           string    `json:"status"`
@@ -245,14 +250,13 @@ type (
 		SportID         string   `json:"sport_id" validate:"required"`
 		StartDate       string   `json:"start_date" validate:"required"` // YYYY-MM-DD (local)
 		EndDate         string   `json:"end_date" validate:"required"`
-		Weekdays        []int    `json:"weekdays" validate:"required"` // 0=Sunday..6=Saturday (Go time.Weekday)
+		Weekdays        []int    `json:"weekdays" validate:"required"`  // 0=Sunday..6=Saturday (Go time.Weekday)
 		DayStart        string   `json:"day_start" validate:"required"` // HH:MM
 		DayEnd          string   `json:"day_end" validate:"required"`   // HH:MM
 		SlotMinutes     int      `json:"slot_minutes" validate:"required"`
-		GapMinutes      int      `json:"gap_minutes"`
+		GapMinutes      int      `json:"gap_minutes"` // minutes of rest between consecutive sessions
 		BasePrice       int64    `json:"base_price" validate:"required"`
 		DiscountPercent int      `json:"discount_percent"`
-		Capacity        int      `json:"capacity"`
 		PaymentPolicy   string   `json:"payment_policy"`
 		PeakStart       string   `json:"peak_start"` // HH:MM (optional)
 		PeakEnd         string   `json:"peak_end"`
@@ -277,7 +281,6 @@ type (
 		Status          *string  `json:"status"`
 		BasePrice       *int64   `json:"base_price"`
 		DiscountPercent *int     `json:"discount_percent"`
-		Capacity        *int     `json:"capacity"`
 	}
 
 	BlockRangeRequest struct {
@@ -289,17 +292,17 @@ type (
 	}
 
 	BulkResult struct {
-		Created  int    `json:"created"`
-		Updated  int    `json:"updated"`
-		Skipped  int    `json:"skipped"`
-		Message  string `json:"message"`
+		Created int    `json:"created"`
+		Updated int    `json:"updated"`
+		Skipped int    `json:"skipped"`
+		Message string `json:"message"`
 	}
 
 	// SessionView enriches a Slot with derived occupancy and revenue for the
 	// owner calendar.
 	SessionView struct {
 		Slot
-		Fill            string `json:"fill"`              // available | partial | full
+		Fill            string `json:"fill"` // available | partial | full
 		RemainingSpots  int    `json:"remaining_spots"`
 		RevenueEstimate int64  `json:"revenue_estimate"`
 		AlmostFull      bool   `json:"almost_full"`
@@ -310,7 +313,6 @@ type (
 		ID                 string       `json:"id" bson:"_id"`
 		Name               string       `json:"name" bson:"name"`
 		City               string       `json:"city" bson:"city"`
-		Neighborhood       string       `json:"neighborhood" bson:"neighborhood"`
 		Location           GeoJSONPoint `json:"location" bson:"location"`
 		RatingAvg          float64      `json:"rating_avg" bson:"rating_avg"`
 		LowestPrice        int64        `json:"lowest_price" bson:"lowest_price"`

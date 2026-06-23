@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users, Banknote, UserPlus, Save, CalendarClock, Trash2 } from "lucide-react";
+import { Users, Banknote, UserPlus, Save, CalendarClock, Trash2, Lock } from "lucide-react";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { toast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import TimeField from "@/components/sessions/TimeField";
 import { updateSession, deleteSession, manualBooking } from "@/api/endpoints";
-import { occupancy, revenueEstimate, startOfDay, isoFromLocal } from "@/lib/sessions";
+import { occupancy, isBooked, revenueEstimate, startOfDay, isoFromLocal } from "@/lib/sessions";
 import {
   toFa,
   formatToman,
@@ -44,7 +44,6 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
     end_time: hm(session.ends_at),
     base_price: session.base_price || 0,
     discount_percent: session.discount_percent || 0,
-    capacity: session.capacity || 1,
     status: ["reserved", "expired"].includes(session.status) ? "available" : session.status,
     notes: session.notes || "",
     admin_comment: session.admin_comment || "",
@@ -55,6 +54,8 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const occ = occupancy(session);
+  // A reserved/booked session is locked: its time can no longer be changed.
+  const locked = isBooked(session);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const finalPreview = Math.round((Number(form.base_price) * (100 - Number(form.discount_percent))) / 100);
 
@@ -65,28 +66,27 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
   const durationMin = endMin - startMin;
 
   async function save() {
-    if (Number(form.capacity) < occ.booked) {
-      toast(`ظرفیت نمی‌تواند کمتر از ${toFa(occ.booked)} رزرو فعلی باشد`, "error");
-      return;
-    }
-    if (durationMin < 15) {
+    if (!locked && durationMin < 15) {
       toast("مدت سانس باید حداقل ۱۵ دقیقه باشد", "error");
       return;
     }
     setSaving(true);
     try {
       const day = startOfDay(new Date(session.starts_at));
-      await updateSession(session.id, {
+      const patch = {
         title: form.title,
-        starts_at: isoFromLocal(day, startMin),
-        ends_at: isoFromLocal(day, endMin),
         base_price: Number(form.base_price),
         discount_percent: Number(form.discount_percent),
-        capacity: Number(form.capacity),
         status: form.status,
         notes: form.notes,
         admin_comment: form.admin_comment,
-      });
+      };
+      // Reserved sessions keep their original time — never send a new one.
+      if (!locked) {
+        patch.starts_at = isoFromLocal(day, startMin);
+        patch.ends_at = isoFromLocal(day, endMin);
+      }
+      await updateSession(session.id, patch);
       toast("سانس به‌روزرسانی شد");
       onSaved?.();
       onClose();
@@ -136,7 +136,7 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat icon={CalendarClock} label="تاریخ" value={formatJalaliDate(session.starts_at)} />
           <Stat icon={CalendarClock} label="ساعت" value={formatTimeRange(session.starts_at, session.ends_at)} />
-          <Stat icon={Users} label="اشغال" value={`${toFa(occ.booked)}/${toFa(occ.capacity)}`} />
+          <Stat icon={Users} label="وضعیت رزرو" value={occ.booked > 0 ? "رزرو شده" : "آزاد"} />
           <Stat icon={Banknote} label="درآمد تخمینی" value={`${formatToman(revenueEstimate(session))} ت`} />
         </div>
 
@@ -149,19 +149,28 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
           />
         </div>
 
+        {locked && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            این سانس رزرو شده است؛ زمان آن قابل تغییر نیست. برای تغییر زمان ابتدا رزرو را لغو کنید.
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>ساعت شروع</Label>
-            <TimeField value={form.start_time} onChange={(v) => set("start_time", v)} />
+            <TimeField value={form.start_time} onChange={(v) => set("start_time", v)} disabled={locked} />
           </div>
           <div className="space-y-1.5">
             <Label>ساعت پایان</Label>
-            <TimeField value={form.end_time} onChange={(v) => set("end_time", v)} />
+            <TimeField value={form.end_time} onChange={(v) => set("end_time", v)} disabled={locked} />
           </div>
-          <p className="-mt-1 text-xs text-muted-foreground sm:col-span-2">
-            مدت سانس: <b>{toFa(Math.floor(durationMin / 60))}</b> ساعت و <b>{toFa(durationMin % 60)}</b> دقیقه
-            {endMin > 24 * 60 && " (پایان در روز بعد)"}
-          </p>
+          {!locked && (
+            <p className="-mt-1 text-xs text-muted-foreground sm:col-span-2">
+              مدت سانس: <b>{toFa(Math.floor(durationMin / 60))}</b> ساعت و <b>{toFa(durationMin % 60)}</b> دقیقه
+              {endMin > 24 * 60 && " (پایان در روز بعد)"}
+            </p>
+          )}
           <div className="space-y-1.5 sm:col-span-2">
             <Label>عنوان سانس (اختیاری)</Label>
             <Input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="مثلاً سانس عصر بانوان" />
@@ -173,10 +182,6 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
           <div className="space-y-1.5">
             <Label>درصد تخفیف</Label>
             <Input type="number" min={0} max={100} value={form.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>ظرفیت</Label>
-            <Input type="number" min={1} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>وضعیت</Label>
@@ -206,7 +211,7 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={addManualBooking} disabled={booking || occ.remaining <= 0}>
               {booking ? <Spinner /> : <UserPlus className="h-4 w-4" />}
-              رزرو دستی ({toFa(occ.remaining)} جای خالی)
+              {occ.booked > 0 ? "رزرو شده" : "رزرو دستی"}
             </Button>
             <Button
               type="button"

@@ -38,6 +38,63 @@ func TestIsIranMobile(t *testing.T) {
 	}
 }
 
+func TestIsIranLandline(t *testing.T) {
+	valid := []string{"02112345678", "04133334444", "07136660000"}
+	invalid := []string{"09120000000", "2112345678", "0211234567", "00211234567", "abcd"}
+	for _, v := range valid {
+		if !IsIranLandline(v) {
+			t.Errorf("IsIranLandline(%q) = false, want true", v)
+		}
+	}
+	for _, v := range invalid {
+		if IsIranLandline(v) {
+			t.Errorf("IsIranLandline(%q) = true, want false", v)
+		}
+	}
+}
+
+func TestNormalizeIranMobile(t *testing.T) {
+	cases := []struct {
+		in  string
+		out string
+		ok  bool
+	}{
+		{"", "", true},
+		{"09120000000", "09120000000", true},
+		{"+989120000000", "09120000000", true},
+		{"00989120000000", "09120000000", true},
+		{"9120000000", "09120000000", true},
+		{"۰۹۱۲۰۰۰۰۰۰۰", "09120000000", true},
+		{"0912000", "", false},
+	}
+	for _, c := range cases {
+		got, ok := NormalizeIranMobile(c.in)
+		if got != c.out || ok != c.ok {
+			t.Errorf("NormalizeIranMobile(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.out, c.ok)
+		}
+	}
+}
+
+func TestNormalizeIranLandline(t *testing.T) {
+	cases := []struct {
+		in  string
+		out string
+		ok  bool
+	}{
+		{"", "", true},
+		{"02112345678", "02112345678", true},
+		{"+982112345678", "02112345678", true},
+		{"۰۲۱۱۲۳۴۵۶۷۸", "02112345678", true},
+		{"123", "", false},
+	}
+	for _, c := range cases {
+		got, ok := NormalizeIranLandline(c.in)
+		if got != c.out || ok != c.ok {
+			t.Errorf("NormalizeIranLandline(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.out, c.ok)
+		}
+	}
+}
+
 func TestIsStrongPassword(t *testing.T) {
 	if !IsStrongPassword("Password123") {
 		t.Error("expected Password123 to be strong")

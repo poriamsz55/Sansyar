@@ -80,9 +80,10 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 		complex := venue.Complex{
 			ID: "complex-azadi", OwnerID: "user-owner", Name: "مجموعه ورزشی آزادی", Slug: "azadi-sport-complex",
 			Description: "رزرو آنلاین سالن های فوتسال، والیبال و بسکتبال با پرداخت امن و قوانین شفاف.",
-			City:        "تهران", Neighborhood: "آزادی", Address: "تهران، ضلع غربی ورزشگاه آزادی",
+			City:        "تهران", Address: "تهران، ضلع غربی ورزشگاه آزادی",
 			Location:     venue.GeoJSONPoint{Type: "Point", Coordinates: []float64{51.275, 35.724}},
-			ContactPhone: "02100000000", Images: []string{"/images/venues/azadi-1.jpg"}, Amenities: []string{"پارکینگ", "رختکن", "دوش", "بوفه"},
+			ContactPhone: "02100000000", ContactLandline: "02100000000", ContactMobile: "09120000000",
+			Images: []string{"/images/venues/azadi-1.jpg"}, Amenities: []string{"پارکینگ", "رختکن", "دوش", "بوفه"},
 			Rules:              []string{"حضور ۱۵ دقیقه پیش از شروع سانس الزامی است.", "استفاده از کفش مناسب سالن الزامی است."},
 			CancellationPolicy: venue.CancellationPolicy{FreeBeforeHours: 24, PartialBeforeHours: 6, PartialRefundPct: 50},
 			Status:             venue.ComplexPublished, RatingAvg: 4.7, RatingCount: 128, CreatedAt: now, UpdatedAt: now,
@@ -104,7 +105,7 @@ func seedData(ctx context.Context, users *database.Repository[auth.User], sports
 			slot := venue.Slot{
 				ID: "slot-azadi-" + time.Unix(int64(i), 0).Format("150405"), HallID: hall.ID, ComplexID: complex.ID, SportID: "sport-futsal",
 				StartsAt: start, EndsAt: start.Add(90 * time.Minute), DurationMinutes: 90,
-				BasePrice: 2500000, FinalPrice: 2250000, DiscountPercent: 10, Capacity: 10, BookedCount: 0, Status: venue.SlotAvailable,
+				BasePrice: 2500000, FinalPrice: 2250000, DiscountPercent: 10, BookedCount: 0, Status: venue.SlotAvailable,
 				PaymentPolicy: "full_online", MinDepositAmount: 1000000, CancellationPolicySnapshot: complex.CancellationPolicy,
 				CreatedBy: "user-owner", CreatedAt: now, UpdatedAt: now,
 			}

@@ -15,10 +15,6 @@ import (
 	"sansyar/backend/pkg/errormap"
 )
 
-// effectiveCapacityExpr yields a session's capacity, treating a missing or
-// non-positive value (legacy single-slot documents) as 1.
-var effectiveCapacityExpr = bson.M{"$cond": bson.A{bson.M{"$gt": bson.A{"$capacity", 0}}, "$capacity", 1}}
-
 type Service struct {
 	bookings    *database.Repository[Booking]
 	slots       *database.Repository[venue.Slot]
@@ -50,18 +46,17 @@ func (s *Service) create(ctx context.Context, customerID string, idempotencyKey 
 
 	bookingID := uuid.NewString()
 	now := time.Now().UTC()
-	// Multi-capacity sessions take more than one booking. Atomically claim a
-	// spot only while the session is open and not yet full. A missing/zero
-	// capacity on legacy documents is treated as a single exclusive slot.
+	// A session holds a single booking. Atomically claim it only while it is open
+	// and not yet booked, marking it reserved so the owner can no longer move it.
 	result, err := s.slots.Collection().UpdateOne(ctx,
 		bson.M{
-			"_id":    req.SlotID,
-			"status": venue.SlotAvailable,
-			"$expr":  bson.M{"$lt": bson.A{"$booked_count", effectiveCapacityExpr}},
+			"_id":          req.SlotID,
+			"status":       venue.SlotAvailable,
+			"booked_count": bson.M{"$lt": 1},
 		},
 		bson.M{
 			"$inc": bson.M{"booked_count": 1},
-			"$set": bson.M{"updated_at": now},
+			"$set": bson.M{"status": venue.SlotReserved, "updated_at": now},
 		},
 	)
 	if err != nil {
@@ -97,8 +92,8 @@ func (s *Service) create(ctx context.Context, customerID string, idempotencyKey 
 	}
 
 	if err := s.bookings.Create(ctx, booking); err != nil {
-		// Release the claimed spot so capacity is not leaked.
-		_, _ = s.slots.Collection().UpdateOne(ctx, bson.M{"_id": req.SlotID}, bson.M{"$inc": bson.M{"booked_count": -1}, "$set": bson.M{"updated_at": time.Now().UTC()}})
+		// Release the just-claimed session so it isn't left stuck as reserved.
+		releaseSpot(ctx, s.slots, req.SlotID, time.Now().UTC())
 		if mongo.IsDuplicateKeyError(err) {
 			return Booking{}, fmt.Errorf("%w: you already have a booking for this session", errormap.ErrConflict)
 		}
@@ -169,12 +164,28 @@ func bookingCancelNote(d RefundDecision) string {
 	}
 }
 
-// releaseSpot frees one capacity unit on a session when a booking is cancelled,
-// never letting booked_count drop below zero.
+// releaseSpot frees a session when its booking is cancelled: it decrements the
+// booked count (never below zero) and, once the session is empty again, flips it
+// back from "reserved" to "available" so it can be booked and re-scheduled.
 func releaseSpot(ctx context.Context, slots *database.Repository[venue.Slot], slotID string, now time.Time) {
 	_, _ = slots.Collection().UpdateOne(ctx,
 		bson.M{"_id": slotID, "booked_count": bson.M{"$gt": 0}},
-		bson.M{"$inc": bson.M{"booked_count": -1}, "$set": bson.M{"updated_at": now}},
+		bson.A{
+			bson.M{"$set": bson.M{
+				"booked_count": bson.M{"$max": bson.A{0, bson.M{"$subtract": bson.A{"$booked_count", 1}}}},
+				"updated_at":   now,
+			}},
+			bson.M{"$set": bson.M{
+				"status": bson.M{"$cond": bson.A{
+					bson.M{"$and": bson.A{
+						bson.M{"$eq": bson.A{"$booked_count", 0}},
+						bson.M{"$eq": bson.A{"$status", venue.SlotReserved}},
+					}},
+					venue.SlotAvailable,
+					"$status",
+				}},
+			}},
+		},
 	)
 }
 

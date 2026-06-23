@@ -345,7 +345,6 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
     sport_id: sportOptions[0]?.id || "",
     base_price: hall?.base_price || 2000000,
     discount_percent: 0,
-    capacity: 1,
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -366,7 +365,6 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
         ends_at: endsAt,
         base_price: Number(form.base_price),
         discount_percent: Number(form.discount_percent),
-        capacity: Number(form.capacity),
         payment_policy: "full_online",
       });
       toast("سانس ساخته شد");
@@ -409,10 +407,6 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
           <div className="space-y-1.5">
             <Label>درصد تخفیف</Label>
             <Input type="number" min={0} max={100} value={form.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>ظرفیت</Label>
-            <Input type="number" min={1} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} />
           </div>
         </div>
         <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">

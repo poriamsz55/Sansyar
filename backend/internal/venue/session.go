@@ -47,27 +47,21 @@ func (s *Service) hallOwnerComplex(ctx context.Context, hallID, ownerID string) 
 }
 
 func enrichSession(slot Slot) SessionView {
-	capacity := slot.Capacity
-	if capacity <= 0 {
-		capacity = 1
-	}
-	remaining := capacity - slot.BookedCount
-	if remaining < 0 {
-		remaining = 0
-	}
+	// Sessions hold a single booking: open while BookedCount is 0, otherwise full.
+	booked := slot.BookedCount > 0
 	fill := "available"
-	if slot.BookedCount >= capacity {
+	remaining := 1
+	if booked {
 		fill = "full"
-	} else if slot.BookedCount > 0 {
-		fill = "partial"
+		remaining = 0
 	}
 	view := SessionView{
 		Slot:            slot,
 		Fill:            fill,
 		RemainingSpots:  remaining,
 		RevenueEstimate: int64(slot.BookedCount) * slot.FinalPrice,
-		AlmostFull:      slot.BookedCount > 0 && remaining > 0 && float64(slot.BookedCount)/float64(capacity) >= 0.8,
-		LowDemand:       slot.BookedCount == 0 && slot.Status == SlotAvailable && slot.StartsAt.After(time.Now().UTC()),
+		AlmostFull:      false,
+		LowDemand:       !booked && slot.Status == SlotAvailable && slot.StartsAt.After(time.Now().UTC()),
 	}
 	return view
 }
@@ -142,7 +136,7 @@ func (s *Service) generateSessions(ctx context.Context, ownerID string, req Gene
 	if err != nil {
 		return BulkResult{}, err
 	}
-	dayEnd, err := parseClock(req.DayEnd)
+	dayEnd, err := parseDayEndClock(req.DayEnd)
 	if err != nil {
 		return BulkResult{}, err
 	}
@@ -172,10 +166,6 @@ func (s *Service) generateSessions(ctx context.Context, ownerID string, req Gene
 		}
 	}
 
-	capacity := req.Capacity
-	if capacity <= 0 {
-		capacity = 1
-	}
 	paymentPolicy := req.PaymentPolicy
 	if paymentPolicy == "" {
 		paymentPolicy = "full_online"
@@ -214,7 +204,6 @@ func (s *Service) generateSessions(ctx context.Context, ownerID string, req Gene
 				BasePrice:                  price,
 				FinalPrice:                 final,
 				DiscountPercent:            req.DiscountPercent,
-				Capacity:                   capacity,
 				Status:                     SlotAvailable,
 				PaymentPolicy:              paymentPolicy,
 				CancellationPolicySnapshot: complex.CancellationPolicy,
@@ -339,7 +328,7 @@ func (s *Service) duplicateWeek(ctx context.Context, ownerID string, req Duplica
 	return BulkResult{Created: created, Skipped: skipped, Message: "week duplicated"}, nil
 }
 
-// bulkUpdate applies the same price/discount/capacity/status to many sessions.
+// bulkUpdate applies the same price/discount/status to many sessions.
 func (s *Service) bulkUpdate(ctx context.Context, ownerID string, req BulkUpdateSessionsRequest) (BulkResult, error) {
 	if len(req.SlotIDs) == 0 {
 		return BulkResult{}, fmt.Errorf("%w: no sessions selected", errormap.ErrInvalidInput)
@@ -388,13 +377,6 @@ func (s *Service) bulkUpdate(ctx context.Context, ownerID string, req BulkUpdate
 		}
 		if req.Status != nil {
 			set["status"] = *req.Status
-		}
-		if req.Capacity != nil {
-			if *req.Capacity < slot.BookedCount || *req.Capacity < 1 {
-				skipped++
-				continue
-			}
-			set["capacity"] = *req.Capacity
 		}
 		if err := s.slots.Update(ctx, id, bson.M{"$set": set}); err != nil {
 			return BulkResult{}, err
@@ -453,6 +435,18 @@ func parseClock(s string) (int, error) {
 		return 0, fmt.Errorf("%w: time must be HH:MM", errormap.ErrInvalidInput)
 	}
 	return t.Hour()*60 + t.Minute(), nil
+}
+
+// parseDayEndClock parses an end-of-day clock value, treating "24:00" and the
+// midnight wrap "00:00" as the end of the day (1440 minutes) rather than the
+// start. This avoids the off-by-one-day bug where a window ending at midnight
+// generated no sessions.
+func parseDayEndClock(s string) (int, error) {
+	switch s {
+	case "24:00", "00:00":
+		return 24 * 60, nil
+	}
+	return parseClock(s)
 }
 
 func daysBetween(from, to time.Time) int {

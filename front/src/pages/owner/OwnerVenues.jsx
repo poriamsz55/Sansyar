@@ -22,6 +22,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import TagInput from "@/components/ui/TagInput";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ImageUpload, BannerUpload, ImagePreview, splitImages, joinImages } from "@/components/ImageUpload";
@@ -50,15 +51,22 @@ import {
   mergePendingChanges,
 } from "@/lib/constants";
 import { toFa, formatToman } from "@/lib/utils";
+import {
+  isIranMobile,
+  isIranLandline,
+  normalizeMobile,
+  normalizeLandline,
+  sanitizeContactInput,
+} from "@/lib/validation";
 
 const COMPLEX_STEPS = ["اطلاعات پایه", "موقعیت مکانی", "تصاویر", "امکانات و توضیحات"];
 
 const emptyComplex = {
   name: "",
-  contact_phone: "",
+  contact_mobile: "",
+  contact_landline: "",
   province: "",
   city: "",
-  neighborhood: "",
   address: "",
   lat: 35.6892,
   lng: 51.389,
@@ -68,6 +76,16 @@ const emptyComplex = {
   rules: [],
   description: "",
 };
+
+// Split a legacy single contact_phone into the new mobile / landline fields.
+function splitLegacyPhone(src) {
+  if (src.contact_mobile || src.contact_landline) {
+    return { contact_mobile: src.contact_mobile || "", contact_landline: src.contact_landline || "" };
+  }
+  const legacy = src.contact_phone || "";
+  if (isIranMobile(legacy)) return { contact_mobile: legacy, contact_landline: "" };
+  return { contact_mobile: "", contact_landline: legacy };
+}
 
 const emptyHall = {
   name: "",
@@ -139,10 +157,9 @@ export default function OwnerVenues() {
     const src = mergePendingChanges(c);
     setComplexForm({
       name: src.name || "",
-      contact_phone: src.contact_phone || "",
+      ...splitLegacyPhone(src),
       province: src.province || "",
       city: src.city || "",
-      neighborhood: src.neighborhood || "",
       address: src.address || "",
       lat: src.location?.coordinates?.[1] ?? 35.6892,
       lng: src.location?.coordinates?.[0] ?? 51.389,
@@ -157,17 +174,24 @@ export default function OwnerVenues() {
 
   const setC = (key, value) => setComplexForm((f) => ({ ...f, [key]: value }));
 
-  function toggleAmenity(a) {
-    setComplexForm((f) => ({
-      ...f,
-      amenities: f.amenities.includes(a) ? f.amenities.filter((x) => x !== a) : [...f.amenities, a],
-    }));
-  }
-
   function validateComplexStep(s) {
-    if (s === 0 && !complexForm.name.trim()) {
-      toast("نام مجموعه را وارد کنید", "error");
-      return false;
+    if (s === 0) {
+      if (!complexForm.name.trim()) {
+        toast("نام مجموعه را وارد کنید", "error");
+        return false;
+      }
+      if (complexForm.contact_mobile && normalizeMobile(complexForm.contact_mobile) === null) {
+        toast("شماره موبایل معتبر نیست (مثل ۰۹۱۲۳۴۵۶۷۸۹)", "error");
+        return false;
+      }
+      if (complexForm.contact_landline && normalizeLandline(complexForm.contact_landline) === null) {
+        toast("شماره تلفن ثابت معتبر نیست (مثل ۰۲۱۱۲۳۴۵۶۷۸)", "error");
+        return false;
+      }
+      if (!complexForm.contact_mobile && !complexForm.contact_landline) {
+        toast("حداقل یک شماره تماس (موبایل یا ثابت) وارد کنید", "error");
+        return false;
+      }
     }
     if (s === 1) {
       if (!complexForm.province) {
@@ -198,6 +222,8 @@ export default function OwnerVenues() {
       const { banner, gallery, ...rest } = complexForm;
       const payload = {
         ...rest,
+        contact_mobile: normalizeMobile(complexForm.contact_mobile) || "",
+        contact_landline: normalizeLandline(complexForm.contact_landline) || "",
         lat: Number(complexForm.lat),
         lng: Number(complexForm.lng),
         images: joinImages(banner, gallery),
@@ -270,13 +296,13 @@ export default function OwnerVenues() {
 
   const setH = (key, value) => setHallForm((f) => ({ ...f, [key]: value }));
 
-  function toggleSport(id) {
-    setHallForm((f) => ({
-      ...f,
-      supported_sport_ids: f.supported_sport_ids.includes(id)
-        ? f.supported_sport_ids.filter((x) => x !== id)
-        : [...f.supported_sport_ids, id],
-    }));
+  // The hall sports chip input works with display names. Known sports map back
+  // to their canonical id; anything else is stored as a custom sport name.
+  const sportIdByName = Object.fromEntries(sports.map((s) => [s.name.trim().toLowerCase(), s.id]));
+  const sportLabels = hallForm.supported_sport_ids.map((id) => sportName(id));
+  function setHallSports(labels) {
+    const ids = labels.map((l) => sportIdByName[l.trim().toLowerCase()] || l.trim());
+    setH("supported_sport_ids", ids);
   }
 
   async function submitHall() {
@@ -302,7 +328,11 @@ export default function OwnerVenues() {
       };
       if (editingHall) {
         await updateHall(editingHall.id, body);
-        toast("سالن به‌روزرسانی شد");
+        if (["approved", "published"].includes(editingHall.status)) {
+          toast("تغییرات سالن ثبت شد و برای نمایش در سایت نیاز به تأیید مجدد مدیر ارشد دارد");
+        } else {
+          toast("سالن به‌روزرسانی شد");
+        }
       } else {
         await createHall(hallComplex.id, body);
         toast("سالن ثبت شد — پس از تأیید مدیر ارشد در سایت نمایش داده می‌شود");
@@ -390,11 +420,12 @@ export default function OwnerVenues() {
                     <p className="mt-0.5 flex items-center gap-1 text-xs text-white/85">
                       <MapPin className="h-3.5 w-3.5" />
                       {c.city}
-                      {c.neighborhood ? `، ${c.neighborhood}` : ""}
-                      {c.contact_phone && (
+                      {(c.contact_landline || c.contact_mobile || c.contact_phone) && (
                         <span className="mr-2 flex items-center gap-1">
                           <Phone className="h-3 w-3" />
-                          <span dir="ltr">{toFa(c.contact_phone)}</span>
+                          <span dir="ltr">
+                            {toFa(c.contact_landline || c.contact_mobile || c.contact_phone)}
+                          </span>
                         </span>
                       )}
                     </p>
@@ -541,14 +572,33 @@ export default function OwnerVenues() {
                 <Label>نام مجموعه</Label>
                 <Input value={complexForm.name} onChange={(e) => setC("name", e.target.value)} required />
               </div>
-              <div className="space-y-1.5">
-                <Label>تلفن تماس مجموعه</Label>
-                <Input
-                  value={complexForm.contact_phone}
-                  onChange={(e) => setC("contact_phone", e.target.value)}
-                  dir="ltr"
-                  placeholder="02100000000"
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>تلفن همراه</Label>
+                  <Input
+                    value={complexForm.contact_mobile}
+                    onChange={(e) => setC("contact_mobile", sanitizeContactInput(e.target.value))}
+                    dir="ltr"
+                    inputMode="tel"
+                    placeholder="09123456789"
+                  />
+                  {complexForm.contact_mobile && !isIranMobile(normalizeMobile(complexForm.contact_mobile) || "") && (
+                    <p className="text-xs text-destructive">شماره موبایل معتبر نیست</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>تلفن ثابت</Label>
+                  <Input
+                    value={complexForm.contact_landline}
+                    onChange={(e) => setC("contact_landline", sanitizeContactInput(e.target.value))}
+                    dir="ltr"
+                    inputMode="tel"
+                    placeholder="02112345678"
+                  />
+                  {complexForm.contact_landline && !isIranLandline(normalizeLandline(complexForm.contact_landline) || "") && (
+                    <p className="text-xs text-destructive">شماره تلفن ثابت معتبر نیست (با کد شهر)</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -584,10 +634,6 @@ export default function OwnerVenues() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>محله (اختیاری)</Label>
-                <Input value={complexForm.neighborhood} onChange={(e) => setC("neighborhood", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
                 <Label>آدرس کامل</Label>
                 <Input value={complexForm.address} onChange={(e) => setC("address", e.target.value)} required />
               </div>
@@ -595,6 +641,7 @@ export default function OwnerVenues() {
                 <Label>موقعیت دقیق روی نقشه</Label>
                 <MapPicker
                   value={{ lat: complexForm.lat, lng: complexForm.lng }}
+                  province={complexForm.province}
                   onChange={({ lat, lng }) => setComplexForm((f) => ({ ...f, lat, lng }))}
                 />
               </div>
@@ -626,23 +673,15 @@ export default function OwnerVenues() {
             <div className="grid gap-4">
               <div className="space-y-1.5">
                 <Label>امکانات</Label>
-                <div className="flex flex-wrap gap-2">
-                  {AMENITIES.map((a) => (
-                    <button
-                      type="button"
-                      key={a}
-                      onClick={() => toggleAmenity(a)}
-                      className={
-                        "rounded-full border px-3 py-1.5 text-sm transition-colors " +
-                        (complexForm.amenities.includes(a)
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border hover:bg-accent")
-                      }
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
+                <TagInput
+                  value={complexForm.amenities}
+                  onChange={(v) => setC("amenities", v)}
+                  suggestions={AMENITIES}
+                  placeholder="افزودن امکانات (مثلاً پارکینگ)…"
+                />
+                <p className="text-xs text-muted-foreground">
+                  می‌توانید امکانات دلخواه خود را اضافه یا حذف کنید.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>توضیحات</Label>
@@ -673,23 +712,15 @@ export default function OwnerVenues() {
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>ورزش‌ها</Label>
-              <div className="flex flex-wrap gap-2">
-                {sports.map((s) => (
-                  <button
-                    type="button"
-                    key={s.id}
-                    onClick={() => toggleSport(s.id)}
-                    className={
-                      "rounded-full border px-3 py-1.5 text-sm transition-colors " +
-                      (hallForm.supported_sport_ids.includes(s.id)
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-accent")
-                    }
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
+              <TagInput
+                value={sportLabels}
+                onChange={setHallSports}
+                suggestions={sports.map((s) => s.name)}
+                placeholder="افزودن ورزش (مثلاً فوتسال)…"
+              />
+              <p className="text-xs text-muted-foreground">
+                ورزش‌های استاندارد را انتخاب یا ورزش دلخواه خود را اضافه کنید.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>نوع</Label>

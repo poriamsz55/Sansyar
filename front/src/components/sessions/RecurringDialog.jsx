@@ -9,8 +9,9 @@ import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/skeleton";
 import { toast } from "@/components/Toast";
 import TimeField from "@/components/sessions/TimeField";
+import JalaliDatePicker from "@/components/ui/JalaliDatePicker";
 import { generateSessions } from "@/api/endpoints";
-import { cn, toFa, formatToman } from "@/lib/utils";
+import { cn, toFa, formatToman, formatJalaliDate } from "@/lib/utils";
 import { localDateStr } from "@/lib/sessions";
 
 // Go time.Weekday: Sunday=0 … Saturday=6. Display starts Saturday (Iran).
@@ -37,7 +38,6 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
     gap_minutes: 0,
     base_price: hall?.base_price || 2000000,
     discount_percent: 0,
-    capacity: 1,
     peak_enabled: false,
     peak_start: "18:00",
     peak_end: "22:00",
@@ -77,7 +77,6 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
         gap_minutes: Number(form.gap_minutes),
         base_price: Number(form.base_price),
         discount_percent: Number(form.discount_percent),
-        capacity: Number(form.capacity),
         payment_policy: "full_online",
         peak_start: form.peak_enabled ? form.peak_start : "",
         peak_end: form.peak_enabled ? form.peak_end : "",
@@ -100,11 +99,11 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>از تاریخ</Label>
-            <Input type="date" dir="ltr" value={form.start_date} onChange={(e) => set("start_date", e.target.value)} />
+            <JalaliDatePicker value={form.start_date} onChange={(v) => set("start_date", v)} />
           </div>
           <div className="space-y-1.5">
             <Label>تا تاریخ</Label>
-            <Input type="date" dir="ltr" value={form.end_date} onChange={(e) => set("end_date", e.target.value)} />
+            <JalaliDatePicker value={form.end_date} onChange={(v) => set("end_date", v)} />
           </div>
         </div>
 
@@ -153,12 +152,13 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
             <Input type="number" value={form.slot_minutes} onChange={(e) => set("slot_minutes", e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>فاصله بین سانس‌ها</Label>
-            <Input type="number" value={form.gap_minutes} onChange={(e) => set("gap_minutes", e.target.value)} />
+            <Label>فاصله بین سانس‌ها (دقیقه)</Label>
+            <Input type="number" min={0} value={form.gap_minutes} onChange={(e) => set("gap_minutes", e.target.value)} />
+            <p className="text-xs text-muted-foreground">زمان استراحت بین دو سانس متوالی</p>
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>قیمت پایه (ریال)</Label>
             <Input type="number" value={form.base_price} onChange={(e) => set("base_price", e.target.value)} />
@@ -167,10 +167,6 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
           <div className="space-y-1.5">
             <Label>درصد تخفیف</Label>
             <Input type="number" min={0} max={100} value={form.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>ظرفیت هر سانس</Label>
-            <Input type="number" min={1} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} />
           </div>
         </div>
 
@@ -202,16 +198,18 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
         <div className="space-y-1.5">
           <Label>روزهای استثنا / تعطیل (در این تاریخ‌ها سانسی ساخته نمی‌شود)</Label>
           <div className="flex gap-2">
-            <Input type="date" dir="ltr" value={exceptionDraft} onChange={(e) => setExceptionDraft(e.target.value)} />
-            <Button type="button" variant="secondary" onClick={addException}>
+            <div className="flex-1">
+              <JalaliDatePicker value={exceptionDraft} onChange={setExceptionDraft} placeholder="انتخاب روز تعطیل" />
+            </div>
+            <Button type="button" variant="secondary" onClick={addException} disabled={!exceptionDraft}>
               افزودن
             </Button>
           </div>
           {exceptions.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {exceptions.map((d) => (
-                <span key={d} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs" dir="ltr">
-                  {d}
+                <span key={d} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
+                  {formatJalaliDate(d)}
                   <button type="button" onClick={() => setExceptions((e) => e.filter((x) => x !== d))}>
                     <X className="h-3 w-3" />
                   </button>

@@ -25,7 +25,7 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 		"complexes": {
 			{Keys: bson.D{{Key: "location", Value: "2dsphere"}}},
 			{Keys: bson.D{{Key: "owner_id", Value: 1}, {Key: "status", Value: 1}}},
-			{Keys: bson.D{{Key: "city", Value: 1}, {Key: "neighborhood", Value: 1}}},
+			{Keys: bson.D{{Key: "city", Value: 1}}},
 			{Keys: bson.D{{Key: "rating_avg", Value: -1}}},
 		},
 		"halls": {
@@ -64,6 +64,8 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 	// multi-capacity (slot_id + customer_id) uniqueness. Best effort: the index
 	// is absent on fresh databases.
 	_ = db.Collection("bookings").Indexes().DropOne(ctx, "slot_id_1")
+	// Neighborhood was removed from the address model; drop its compound index.
+	_ = db.Collection("complexes").Indexes().DropOne(ctx, "city_1_neighborhood_1")
 
 	for collection, models := range definitions {
 		if len(models) == 0 {
