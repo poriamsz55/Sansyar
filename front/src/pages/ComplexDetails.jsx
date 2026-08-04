@@ -10,6 +10,7 @@ import {
   Maximize2,
   ArrowLeft,
   ArrowRight,
+  CalendarCheck,
 } from "lucide-react";
 
 import { PageTransition } from "@/components/PageTransition";
@@ -17,10 +18,17 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RatingStars } from "@/components/RatingStars";
 import { SlotChip } from "@/components/SlotChip";
-import { getComplex, listHalls, listSlots } from "@/api/endpoints";
+import { VenueLocationDialog } from "@/components/VenueLocationDialog";
+import {
+  getComplex,
+  listHalls,
+  listSlots,
+  getComplexBookingCount,
+  myBookings,
+} from "@/api/endpoints";
 import { useSportsMap } from "@/hooks/useSportsMap";
+import { useAuth } from "@/context/AuthContext";
 import { savePendingReservation } from "@/lib/reservation";
 import {
   cn,
@@ -29,25 +37,40 @@ import {
   formatJalaliWeekday,
   formatJalaliDate,
   formatTimeRange,
+  localDateKey,
 } from "@/lib/utils";
 
 function groupByDay(slots) {
   const map = new Map();
   for (const s of slots) {
-    const key = s.starts_at.slice(0, 10);
+    const key = localDateKey(s.starts_at);
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(s);
   }
-  return Array.from(map.entries()).map(([day, items]) => ({
-    day,
-    items: items.sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
-  }));
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, items]) => ({
+      day,
+      items: items.sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+    }));
+}
+
+/** Describes the date span of a hall's available days for the section header. */
+function describeAvailabilityScope(days) {
+  if (days.length === 0) return null;
+  const today = localDateKey(new Date().toISOString());
+  if (days.length === 1) {
+    return days[0].day === today ? "سانس‌های امروز" : `سانس‌های ${formatJalaliDate(days[0].day)}`;
+  }
+  const span = (new Date(days[days.length - 1].day) - new Date(days[0].day)) / 86400000;
+  return span <= 7 ? "سانس‌های این هفته" : "سانس‌های چند روز آینده";
 }
 
 export default function ComplexDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const sportsMap = useSportsMap();
+  const { isAuthenticated } = useAuth();
 
   const [complex, setComplex] = useState(null);
   const [halls, setHalls] = useState([]);
@@ -55,16 +78,20 @@ export default function ComplexDetails() {
   const [error, setError] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
   const [selected, setSelected] = useState(null); // { slot, hall }
+  const [bookingCount, setBookingCount] = useState(null);
+  const [hasCompletedBooking, setHasCompletedBooking] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setError(null);
       try {
-        const [c, h, s] = await Promise.all([
+        const [c, h, s, count] = await Promise.all([
           getComplex(id),
           listHalls(id),
           listSlots({ complexId: id }),
+          getComplexBookingCount(id),
         ]);
         if (!active) return;
         if (!c) {
@@ -74,6 +101,7 @@ export default function ComplexDetails() {
         setComplex(c);
         setHalls(h);
         setSlots(s);
+        setBookingCount(count);
       } catch (err) {
         if (active) setError(err.message);
       }
@@ -82,6 +110,30 @@ export default function ComplexDetails() {
       active = false;
     };
   }, [id]);
+
+  // The venue's phone number is only revealed once the customer has an
+  // actual completed reservation there — check their bookings separately so
+  // an anonymous/logged-out visitor never triggers this authenticated call.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setHasCompletedBooking(false);
+      return;
+    }
+    let active = true;
+    myBookings()
+      .then((bookings) => {
+        if (!active) return;
+        setHasCompletedBooking(
+          bookings.some(
+            (b) => b.complex_id === id && ["confirmed", "completed"].includes(b.status)
+          )
+        );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [id, isAuthenticated]);
 
   function proceed() {
     if (!selected) return;
@@ -163,20 +215,34 @@ export default function ComplexDetails() {
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-extrabold md:text-3xl">{complex.name}</h1>
-              <RatingStars value={complex.rating_avg} count={complex.rating_count} />
+              {bookingCount != null && (
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                  <CalendarCheck className="h-4 w-4 text-primary" />
+                  {toFa(bookingCount)} رزرو
+                </span>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setMapOpen(true)}
+                className="flex items-center gap-1.5 text-right transition-colors hover:text-primary"
+              >
                 <MapPin className="h-4 w-4" />
                 {complex.city}، {complex.address}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Phone className="h-4 w-4" />
-                {toFa(complex.contact_phone)}
-              </span>
+              </button>
+              {hasCompletedBooking ? (
+                <span className="flex items-center gap-1.5">
+                  <Phone className="h-4 w-4" />
+                  {toFa(complex.contact_phone)}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                  <Phone className="h-4 w-4" />
+                  شماره تماس پس از تکمیل رزرو نمایش داده می‌شود.
+                </span>
+              )}
             </div>
-
-            <p className="mt-5 leading-8 text-foreground/80">{complex.description}</p>
 
             {/* Amenities */}
             <div className="mt-6">
@@ -249,7 +315,7 @@ export default function ComplexDetails() {
         <div id="halls" className="mt-12 scroll-mt-20">
           <h2 className="text-xl font-extrabold">سالن‌ها و سانس‌ها</h2>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            سالن مورد نظرت را انتخاب کن و روی یک سانس آزاد بزن.
+            سالن و سانس مورد نظرت را از مجموعه {complex.name} انتخاب کن.
           </p>
 
           <div className="mt-6 space-y-6">
@@ -274,7 +340,7 @@ export default function ComplexDetails() {
             initial={{ y: 80 }}
             animate={{ y: 0 }}
             exit={{ y: 80 }}
-            className="sticky bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur-lg"
+            className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-border bg-card/95 backdrop-blur-lg md:bottom-0"
           >
             <div className="container flex flex-wrap items-center justify-between gap-3 py-3.5">
               <div className="flex items-center gap-3 text-sm">
@@ -295,6 +361,8 @@ export default function ComplexDetails() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <VenueLocationDialog open={mapOpen} onClose={() => setMapOpen(false)} complex={complex} />
     </PageTransition>
   );
 }
@@ -360,7 +428,10 @@ function HallBlock({ hall, slots, selected, onSelect, sportsMap }) {
           {/* Day selector */}
           {days.length > 0 ? (
             <>
-              <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
+              <p className="mt-4 text-xs font-semibold text-primary">
+                {describeAvailabilityScope(days)}
+              </p>
+              <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
                 {days.map((d, i) => (
                   <button
                     key={d.day}
@@ -382,7 +453,7 @@ function HallBlock({ hall, slots, selected, onSelect, sportsMap }) {
                 ))}
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
                 {current.items.map((slot) => (
                   <SlotChip
                     key={slot.id}

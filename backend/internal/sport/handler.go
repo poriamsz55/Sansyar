@@ -24,6 +24,16 @@ func (h *Handler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, items)
 }
 
+// ListAdmin returns every sport, including inactive ones, for the platform
+// sports-management screen.
+func (h *Handler) ListAdmin(c echo.Context) error {
+	items, err := h.service.list(c.Request().Context(), false)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
 func (h *Handler) Create(c echo.Context) error {
 	var req CreateSportRequest
 	if err := c.Bind(&req); err != nil {

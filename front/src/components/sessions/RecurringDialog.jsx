@@ -38,6 +38,7 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
     gap_minutes: 0,
     base_price: hall?.base_price || 2000000,
     discount_percent: 0,
+    gender: hall?.gender_rule === "male" || hall?.gender_rule === "female" ? hall.gender_rule : "",
     peak_enabled: false,
     peak_start: "18:00",
     peak_end: "22:00",
@@ -63,6 +64,7 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
     if (!hall) return;
     if (!form.sport_id) return toast("لطفاً ورزش سانس را انتخاب کنید", "error");
     if (form.weekdays.length === 0) return toast("حداقل یک روز هفته را انتخاب کنید", "error");
+    if (form.end_date < form.start_date) return toast("تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد", "error");
     setSaving(true);
     try {
       const res = await generateSessions({
@@ -82,6 +84,7 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
         peak_end: form.peak_enabled ? form.peak_end : "",
         peak_price: form.peak_enabled ? Number(form.peak_price) : 0,
         exception_dates: exceptions,
+        gender: form.gender,
       });
       toast(`${toFa(res.created || 0)} سانس ساخته شد${res.skipped ? ` (${toFa(res.skipped)} تکراری رد شد)` : ""}`);
       onDone?.();
@@ -99,24 +102,34 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>از تاریخ</Label>
-            <JalaliDatePicker value={form.start_date} onChange={(v) => set("start_date", v)} />
+            <JalaliDatePicker value={form.start_date} onChange={(v) => set("start_date", v)} min={today} />
           </div>
           <div className="space-y-1.5">
             <Label>تا تاریخ</Label>
-            <JalaliDatePicker value={form.end_date} onChange={(v) => set("end_date", v)} />
+            <JalaliDatePicker value={form.end_date} onChange={(v) => set("end_date", v)} min={form.start_date || today} />
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label>ورزش</Label>
-          <Select value={form.sport_id} onChange={(e) => set("sport_id", e.target.value)}>
-            {sportOptions.length === 0 && <option value="">ورزشی موجود نیست</option>}
-            {sportOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>ورزش</Label>
+            <Select value={form.sport_id} onChange={(e) => set("sport_id", e.target.value)}>
+              {sportOptions.length === 0 && <option value="">ورزشی موجود نیست</option>}
+              {sportOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>جنسیت</Label>
+            <Select value={form.gender} onChange={(e) => set("gender", e.target.value)}>
+              <option value="">پیش‌فرض سالن</option>
+              <option value="male">آقایان</option>
+              <option value="female">بانوان</option>
+            </Select>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -199,7 +212,13 @@ export default function RecurringDialog({ open, onClose, hall, sportOptions = []
           <Label>روزهای استثنا / تعطیل (در این تاریخ‌ها سانسی ساخته نمی‌شود)</Label>
           <div className="flex gap-2">
             <div className="flex-1">
-              <JalaliDatePicker value={exceptionDraft} onChange={setExceptionDraft} placeholder="انتخاب روز تعطیل" />
+              <JalaliDatePicker
+                value={exceptionDraft}
+                onChange={setExceptionDraft}
+                placeholder="انتخاب روز تعطیل"
+                min={form.start_date}
+                max={form.end_date}
+              />
             </div>
             <Button type="button" variant="secondary" onClick={addException} disabled={!exceptionDraft}>
               افزودن

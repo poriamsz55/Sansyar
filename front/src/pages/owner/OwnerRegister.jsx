@@ -98,7 +98,7 @@ export default function OwnerRegister() {
             <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
               <Building2 className="h-6 w-6" />
             </span>
-            <h1 className="text-xl font-extrabold">ثبت‌نام مالک مجموعه</h1>
+            <h1 className="text-xl font-extrabold">ثبت‌نام</h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
               در چند گام ساده حساب مدیریت مجموعه‌تان را بسازید.
             </p>

@@ -23,12 +23,17 @@ func NewHandler(service *Service) *Handler {
 func parseListParams(c echo.Context) listComplexParams {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	minPrice, _ := strconv.ParseInt(c.QueryParam("min_price"), 10, 64)
+	maxPrice, _ := strconv.ParseInt(c.QueryParam("max_price"), 10, 64)
 	return listComplexParams{
-		City:   c.QueryParam("city"),
-		Status: c.QueryParam("status"),
-		Query:  c.QueryParam("q"),
-		Page:   page,
-		Limit:  limit,
+		City:     c.QueryParam("city"),
+		Status:   c.QueryParam("status"),
+		Query:    c.QueryParam("q"),
+		Page:     page,
+		Limit:    limit,
+		SportID:  c.QueryParam("sport_id"),
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
 	}
 }
 

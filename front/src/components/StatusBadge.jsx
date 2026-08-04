@@ -5,6 +5,7 @@ import {
   HALL_STATUS,
   SLOT_STATUS,
   PAYMENT_STATUS,
+  TICKET_STATUS,
 } from "@/lib/constants";
 
 const MAPS = {
@@ -13,6 +14,7 @@ const MAPS = {
   hall: HALL_STATUS,
   slot: SLOT_STATUS,
   payment: PAYMENT_STATUS,
+  ticket: TICKET_STATUS,
 };
 
 /** Renders a colored Persian badge for a backend status enum. */

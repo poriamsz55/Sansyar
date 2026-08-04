@@ -220,9 +220,6 @@ export default function Login() {
             <Link to="/owner/login" className="block font-medium text-muted-foreground hover:text-primary">
               ورود مالک مجموعه ←
             </Link>
-            <Link to="/platform/login" className="block text-muted-foreground hover:text-primary">
-              ورود مدیر ارشد پلتفرم ←
-            </Link>
           </div>
         </div>
       </div>

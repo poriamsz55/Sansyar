@@ -12,6 +12,8 @@ import {
   Banknote,
   Clock,
   History,
+  ShieldCheck,
+  ShieldX,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,7 +27,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/PageTransition";
 import { toast } from "@/components/Toast";
 import RejectDialog from "@/components/admin/RejectDialog";
-import { adminListBookings, adminGetBooking, adminConfirmBooking, adminCancelBooking } from "@/api/endpoints";
+import {
+  adminListBookings,
+  adminGetBooking,
+  adminConfirmBooking,
+  adminCancelBooking,
+  approveCancelBooking,
+  rejectCancelBooking,
+} from "@/api/endpoints";
 import { BOOKING_STATUS, PAYMENT_STATUS, PAYMENT_TYPE } from "@/lib/constants";
 import { toFa, formatToman, formatJalaliDate, formatTime } from "@/lib/utils";
 
@@ -34,6 +43,9 @@ const TIMELINE_LABELS = {
   confirmed: "تأیید رزرو",
   cancelled_by_user: "لغو توسط مشتری",
   cancelled_by_admin: "لغو توسط مدیر",
+  cancellation_requested: "درخواست لغو توسط مجموعه",
+  cancellation_approved: "لغو تأیید شد",
+  cancellation_rejected: "درخواست لغو رد شد",
 };
 
 export default function PlatformBookings() {
@@ -42,6 +54,7 @@ export default function PlatformBookings() {
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState(null);
   const [cancelId, setCancelId] = useState(null);
+  const [rejectCancelId, setRejectCancelId] = useState(null);
 
   const limit = 15;
 
@@ -81,6 +94,28 @@ export default function PlatformBookings() {
     try {
       await adminCancelBooking(cancelId, reason);
       toast("رزرو لغو شد");
+      setDetailId(null);
+      load();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  async function approveCancel(id) {
+    try {
+      await approveCancelBooking(id);
+      toast("درخواست لغو تأیید و رزرو لغو شد");
+      setDetailId(null);
+      load();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  async function rejectCancel(reason) {
+    try {
+      await rejectCancelBooking(rejectCancelId, reason);
+      toast("درخواست لغو رد شد و رزرو تأییدشده باقی ماند");
       setDetailId(null);
       load();
     } catch (err) {
@@ -166,6 +201,12 @@ export default function PlatformBookings() {
                         {["confirmed", "awaiting_payment", "pending"].includes(b.status) && (
                           <Button size="sm" variant="outline" className="text-destructive" onClick={() => setCancelId(b.id)}><XCircle className="h-3.5 w-3.5" /></Button>
                         )}
+                        {b.status === "cancellation_requested" && (
+                          <>
+                            <Button size="sm" variant="success" title="تأیید لغو" onClick={() => approveCancel(b.id)}><ShieldCheck className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" variant="outline" className="text-destructive" title="رد درخواست لغو" onClick={() => setRejectCancelId(b.id)}><ShieldX className="h-3.5 w-3.5" /></Button>
+                          </>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -198,14 +239,17 @@ export default function PlatformBookings() {
           onClose={() => setDetailId(null)}
           onConfirm={confirmBooking}
           onCancel={(id) => setCancelId(id)}
+          onApproveCancel={approveCancel}
+          onRejectCancel={(id) => setRejectCancelId(id)}
         />
       )}
       <RejectDialog open={!!cancelId} onClose={() => setCancelId(null)} onConfirm={cancelBooking} title="لغو رزرو" />
+      <RejectDialog open={!!rejectCancelId} onClose={() => setRejectCancelId(null)} onConfirm={rejectCancel} title="رد درخواست لغو" />
     </div>
   );
 }
 
-function BookingDetail({ id, onClose, onConfirm, onCancel }) {
+function BookingDetail({ id, onClose, onConfirm, onCancel, onApproveCancel, onRejectCancel }) {
   const [b, setB] = useState(null);
   useEffect(() => {
     adminGetBooking(id).then(setB).catch(() => setB(false));
@@ -292,6 +336,16 @@ function BookingDetail({ id, onClose, onConfirm, onCancel }) {
             )}
             {["confirmed", "awaiting_payment", "pending"].includes(b.status) && (
               <Button variant="destructive" onClick={() => onCancel(b.id)}><XCircle className="h-4 w-4" /> لغو رزرو</Button>
+            )}
+            {b.status === "cancellation_requested" && (
+              <>
+                <Button variant="outline" className="text-destructive" onClick={() => onRejectCancel(b.id)}>
+                  <ShieldX className="h-4 w-4" /> رد درخواست لغو
+                </Button>
+                <Button variant="success" onClick={() => onApproveCancel(b.id)}>
+                  <ShieldCheck className="h-4 w-4" /> تأیید لغو
+                </Button>
+              </>
             )}
           </div>
         </div>

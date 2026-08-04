@@ -119,6 +119,9 @@ type (
 		BasePrice       int64     `json:"base_price" bson:"base_price"`
 		FinalPrice      int64     `json:"final_price" bson:"final_price"`
 		DiscountPercent int       `json:"discount_percent" bson:"discount_percent"`
+		// Gender restricts this specific session to male/female; empty means it
+		// inherits the hall's GenderRule default.
+		Gender string `json:"gender,omitempty" bson:"gender,omitempty"`
 		// BookedCount is 0 for an open session and 1 once it is booked; a session
 		// holds at most one booking (no per-session capacity).
 		BookedCount                int                `json:"booked_count" bson:"booked_count"`
@@ -147,7 +150,7 @@ type (
 		ContactPhone       string             `json:"contact_phone"`
 		ContactMobile      string             `json:"contact_mobile"`
 		ContactLandline    string             `json:"contact_landline"`
-		Images             []string           `json:"images"`
+		Images             []string           `json:"images" validate:"required,min=1"`
 		Amenities          []string           `json:"amenities"`
 		Rules              []string           `json:"rules"`
 		CancellationPolicy CancellationPolicy `json:"cancellation_policy"`
@@ -195,6 +198,7 @@ type (
 		DiscountPercent *int       `json:"discount_percent"`
 		Notes           *string    `json:"notes"`
 		AdminComment    *string    `json:"admin_comment"`
+		Gender          *string    `json:"gender"`
 	}
 
 	ComplexListItem struct {
@@ -222,7 +226,7 @@ type (
 		Amenities         []string `json:"amenities"`
 		GenderRule        string   `json:"gender_rule"`
 		BasePrice         int64    `json:"base_price" validate:"required"`
-		Images            []string `json:"images"`
+		Images            []string `json:"images" validate:"required,min=1"`
 	}
 
 	CreateSlotRequest struct {
@@ -238,6 +242,7 @@ type (
 		MinDepositAmount int64     `json:"min_deposit_amount"`
 		Status           string    `json:"status"`
 		Notes            string    `json:"notes"`
+		Gender           string    `json:"gender"`
 	}
 
 	// ---- Session management (calendar) ------------------------------------
@@ -262,6 +267,7 @@ type (
 		PeakEnd         string   `json:"peak_end"`
 		PeakPrice       int64    `json:"peak_price"`
 		ExceptionDates  []string `json:"exception_dates"` // YYYY-MM-DD to skip (holidays)
+		Gender          string   `json:"gender"`
 	}
 
 	CopyDayRequest struct {
@@ -281,6 +287,7 @@ type (
 		Status          *string  `json:"status"`
 		BasePrice       *int64   `json:"base_price"`
 		DiscountPercent *int     `json:"discount_percent"`
+		Gender          *string  `json:"gender"`
 	}
 
 	BlockRangeRequest struct {

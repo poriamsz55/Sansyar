@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
+import { SLOT_GENDER } from "@/lib/constants";
 
 import { cn, toFa, formatToman } from "@/lib/utils";
 import { toast } from "@/components/Toast";
@@ -309,7 +310,12 @@ function SessionBlock({
         <span className="truncate" dir="ltr">
           {fmtRange(session)}
         </span>
-        {locked && <Lock className="h-3 w-3 shrink-0" />}
+        <span className="flex shrink-0 items-center gap-0.5">
+          {SLOT_GENDER[session.gender] && (
+            <span className="text-[9px] font-medium opacity-80">{SLOT_GENDER[session.gender].label}</span>
+          )}
+          {locked && <Lock className="h-3 w-3" />}
+        </span>
       </div>
       {!compact && (
         <>

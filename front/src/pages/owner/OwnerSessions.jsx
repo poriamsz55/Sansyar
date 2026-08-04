@@ -128,6 +128,10 @@ export default function OwnerSessions() {
 
   useEffect(() => {
     loadSessions();
+    // Selections don't carry across a hall/view/date change — the sessions
+    // backing them are no longer the ones on screen.
+    setSelectedIds(new Set());
+    setSelectionMode(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hallId, view, anchor]);
 
@@ -146,6 +150,10 @@ export default function OwnerSessions() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set((sessions || []).map((s) => s.id)));
   }
 
   // ---- drag handlers ----
@@ -261,6 +269,8 @@ export default function OwnerSessions() {
           setSelectionMode={setSelectionMode}
           selectedIds={selectedIds}
           clearSelection={() => setSelectedIds(new Set())}
+          onSelectAll={selectAll}
+          hasSessions={!!sessions?.length}
           onDone={loadSessions}
         />
       </div>
@@ -293,6 +303,9 @@ export default function OwnerSessions() {
                   setAnchor(startOfDay(d));
                   setView("day");
                 }}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
               />
             </div>
           ) : (
@@ -345,6 +358,7 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
     sport_id: sportOptions[0]?.id || "",
     base_price: hall?.base_price || 2000000,
     discount_percent: 0,
+    gender: hall?.gender_rule === "male" || hall?.gender_rule === "female" ? hall.gender_rule : "",
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -366,6 +380,7 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
         base_price: Number(form.base_price),
         discount_percent: Number(form.discount_percent),
         payment_policy: "full_online",
+        gender: form.gender,
       });
       toast("سانس ساخته شد");
       onDone();
@@ -407,6 +422,14 @@ function QuickCreateDialog({ hall, sportOptions = [], init, onClose, onDone }) {
           <div className="space-y-1.5">
             <Label>درصد تخفیف</Label>
             <Input type="number" min={0} max={100} value={form.discount_percent} onChange={(e) => set("discount_percent", e.target.value)} />
+          </div>
+          <div className="col-span-2 space-y-1.5">
+            <Label>جنسیت</Label>
+            <Select value={form.gender} onChange={(e) => set("gender", e.target.value)}>
+              <option value="">پیش‌فرض سالن</option>
+              <option value="male">آقایان</option>
+              <option value="female">بانوان</option>
+            </Select>
           </div>
         </div>
         <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">

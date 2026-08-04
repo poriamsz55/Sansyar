@@ -10,9 +10,17 @@ import {
 
 /**
  * Month overview: each Jalali day cell shows its session count, occupancy dots
- * by status, and a revenue estimate. Clicking a day jumps to its day view.
+ * by status, and a revenue estimate. Clicking a day (outside a dot) jumps to
+ * its day view; in selection mode, clicking a dot toggles that session instead.
  */
-export default function MonthView({ anchor, sessions, onPickDay }) {
+export default function MonthView({
+  anchor,
+  sessions,
+  onPickDay,
+  selectionMode = false,
+  selectedIds = new Set(),
+  onToggleSelect,
+}) {
   const cells = monthGrid(anchor);
 
   return (
@@ -31,12 +39,15 @@ export default function MonthView({ anchor, sessions, onPickDay }) {
           const isToday = sameDay(date, new Date());
           const dots = daySessions.slice(0, 8);
           return (
-            <button
+            <div
               key={i}
-              type="button"
-              onClick={() => onPickDay(date)}
+              role="button"
+              tabIndex={0}
+              onClick={() => !selectionMode && onPickDay(date)}
+              onKeyDown={(e) => e.key === "Enter" && !selectionMode && onPickDay(date)}
               className={cn(
-                "min-h-[88px] border-b border-l border-border p-1.5 text-right transition-colors hover:bg-accent",
+                "min-h-[88px] border-b border-l border-border p-1.5 text-right transition-colors",
+                !selectionMode && "cursor-pointer hover:bg-accent",
                 !inMonth && "bg-muted/30 text-muted-foreground/60",
                 isToday && "bg-primary/5"
               )}
@@ -50,7 +61,7 @@ export default function MonthView({ anchor, sessions, onPickDay }) {
                 )}
               </div>
               {dots.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-0.5">
+                <div className="mt-1 flex flex-wrap gap-1">
                   {dots.map((s) => {
                     const occ = occupancy(s);
                     const tone =
@@ -65,14 +76,32 @@ export default function MonthView({ anchor, sessions, onPickDay }) {
                               : occ.fill === "partial"
                                 ? "bg-amber-500"
                                 : "bg-emerald-500";
-                    return <span key={s.id} className={cn("h-1.5 w-1.5 rounded-full", tone)} />;
+                    const selected = selectedIds.has(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        title={s.title || undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (selectionMode) onToggleSelect?.(s.id);
+                          else onPickDay(date);
+                        }}
+                        className={cn(
+                          "h-2.5 w-2.5 rounded-full ring-offset-1 transition-all",
+                          tone,
+                          selectionMode && "hover:scale-125",
+                          selected && "ring-2 ring-primary scale-125"
+                        )}
+                      />
+                    );
                   })}
                 </div>
               )}
               {revenue > 0 && (
                 <div className="mt-1 truncate text-[10px] font-medium text-success">{formatToman(revenue)} ت</div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

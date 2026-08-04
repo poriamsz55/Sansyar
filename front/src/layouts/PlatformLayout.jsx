@@ -10,33 +10,45 @@ import {
   Ticket,
   TrendingUp,
   LogOut,
-  Menu,
+  MoreHorizontal,
+  X,
   ExternalLink,
+  Trophy,
+  LifeBuoy,
 } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
+import BottomNav from "@/components/BottomNav";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/platform/dashboard", label: "داشبورد", icon: LayoutDashboard },
-  { to: "/platform/approvals", label: "تأییدها", icon: ShieldCheck },
-  { to: "/platform/venues", label: "مجموعه‌ها و سالن‌ها", icon: Building2 },
+  { to: "/platform/venues?status=pending_approval", label: "تأییدها", icon: ShieldCheck },
+  { to: "/platform/venues", label: "مجموعه‌ها و سالن‌ها", shortLabel: "مجموعه‌ها", icon: Building2 },
   { to: "/platform/owners", label: "مالکان", icon: Users },
   { to: "/platform/customers", label: "مشتریان", icon: UserCircle },
   { to: "/platform/bookings", label: "رزروها", icon: Ticket },
   { to: "/platform/finance", label: "مالی", icon: TrendingUp },
+  { to: "/platform/sports", label: "رشته‌های ورزشی", icon: Trophy },
+  { to: "/platform/tickets", label: "تیکت‌های پشتیبانی", icon: LifeBuoy },
 ];
+
+// The nine sidebar destinations do not fit a tab bar; these four are the daily
+// ones, the rest stay one tap away behind "بیشتر".
+const bottomTabs = ["/platform/dashboard", "/platform/venues", "/platform/bookings", "/platform/finance"]
+  .map((to) => nav.find((item) => item.to === to));
 
 const titles = {
   "/platform/dashboard": "داشبورد پلتفرم",
-  "/platform/approvals": "صف تأیید",
   "/platform/venues": "مجموعه‌ها و سالن‌ها",
   "/platform/owners": "مدیریت مالکان",
   "/platform/customers": "مشتریان",
   "/platform/bookings": "همه رزروها",
   "/platform/finance": "گزارش مالی",
+  "/platform/sports": "مدیریت رشته‌های ورزشی",
+  "/platform/tickets": "تیکت‌های پشتیبانی",
 };
 
 export default function PlatformLayout() {
@@ -48,8 +60,15 @@ export default function PlatformLayout() {
   function SidebarContent() {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex h-16 items-center border-b border-border px-6">
+        <div className="flex h-16 items-center justify-between border-b border-border px-6">
           <Logo light />
+          <button
+            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground lg:hidden"
+            onClick={() => setOpen(false)}
+            aria-label="بستن منو"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="px-4 py-3">
@@ -115,14 +134,14 @@ export default function PlatformLayout() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden"
               onClick={() => setOpen(false)}
             />
             <motion.aside
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
-              className="fixed inset-y-0 right-0 z-50 w-64 border-l border-border bg-navy lg:hidden"
+              className="fixed inset-y-0 right-0 z-[60] w-64 border-l border-border bg-navy lg:hidden"
             >
               <SidebarContent />
             </motion.aside>
@@ -133,9 +152,6 @@ export default function PlatformLayout() {
       <div className="lg:pr-64">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card/90 px-4 backdrop-blur-xl lg:px-8">
           <div className="flex items-center gap-3">
-            <button className="rounded-lg p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="منو">
-              <Menu className="h-5 w-5" />
-            </button>
             <h1 className="text-base font-bold">{titles[location.pathname] || "پلتفرم مدیریت"}</h1>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5">
@@ -149,10 +165,20 @@ export default function PlatformLayout() {
           </div>
         </header>
 
-        <main className="p-4 lg:p-8">
+        <main className="p-4 pb-24 lg:p-8">
           <Outlet />
         </main>
       </div>
+
+      <BottomNav
+        items={bottomTabs}
+        action={{
+          label: "بیشتر",
+          icon: MoreHorizontal,
+          active: open,
+          onClick: () => setOpen(true),
+        }}
+      />
     </div>
   );
 }

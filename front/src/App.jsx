@@ -12,6 +12,8 @@ import ComplexList from "./pages/ComplexList";
 import ComplexDetails from "./pages/ComplexDetails";
 import Reservation from "./pages/Reservation";
 import MyReservations from "./pages/MyReservations";
+import MyTickets from "./pages/MyTickets";
+import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 
 import OwnerLogin from "./pages/owner/OwnerLogin";
@@ -24,12 +26,13 @@ import OwnerReservations from "./pages/owner/OwnerReservations";
 
 import PlatformLogin from "./pages/platform/PlatformLogin";
 import PlatformDashboard from "./pages/platform/PlatformDashboard";
-import PlatformApprovals from "./pages/platform/PlatformApprovals";
 import PlatformVenues from "./pages/platform/PlatformVenues";
 import PlatformOwners from "./pages/platform/PlatformOwners";
 import PlatformCustomers from "./pages/platform/PlatformCustomers";
 import PlatformBookings from "./pages/platform/PlatformBookings";
 import PlatformFinance from "./pages/platform/PlatformFinance";
+import PlatformSports from "./pages/platform/PlatformSports";
+import PlatformTickets from "./pages/platform/PlatformTickets";
 
 function RequireVenueOwner({ children }) {
   const { isVenueOwner } = useAuth();
@@ -62,6 +65,8 @@ export default function App() {
           <Route path="/complexes/:id" element={<ComplexDetails />} />
           <Route path="/reservation" element={<Reservation />} />
           <Route path="/my-reservations" element={<MyReservations />} />
+          <Route path="/my-tickets" element={<MyTickets />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
 
         <Route path="/login" element={<Login />} />
@@ -101,7 +106,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/platform/dashboard" replace />} />
           <Route path="dashboard" element={<PlatformDashboard />} />
-          <Route path="approvals" element={<PlatformApprovals />} />
+          <Route path="approvals" element={<Navigate to="/platform/venues?status=pending_approval" replace />} />
           <Route path="venues" element={<PlatformVenues />} />
           <Route path="complexes" element={<Navigate to="/platform/venues" replace />} />
           <Route path="halls" element={<Navigate to="/platform/venues" replace />} />
@@ -109,6 +114,8 @@ export default function App() {
           <Route path="customers" element={<PlatformCustomers />} />
           <Route path="bookings" element={<PlatformBookings />} />
           <Route path="finance" element={<PlatformFinance />} />
+          <Route path="sports" element={<PlatformSports />} />
+          <Route path="tickets" element={<PlatformTickets />} />
         </Route>
 
         {/* Legacy /admin paths */}

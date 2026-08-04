@@ -69,7 +69,11 @@
         transparent 60%
       ),
       radial-gradient(60% 90% at 0% 100%, hsl(142 71% 42% / 0.16), transparent 55%),
-      linear-gradient(180deg, hsl(222 47% 17%), hsl(222 47% 13%));
+      linear-gradient(180deg, hsl(222 47% 17% / 0.92), hsl(222 47% 13% / 0.92)),
+      url("/hero-bg.svg");
+    background-size: cover, cover, cover, cover;
+    background-position: center, center, center, center;
+    background-repeat: no-repeat;
   }
 
   .glass {

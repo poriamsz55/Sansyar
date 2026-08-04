@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,6 +80,9 @@ type listComplexParams struct {
 	Limit       int
 	OwnerID     string
 	AllStatuses bool
+	SportID     string
+	MinPrice    int64
+	MaxPrice    int64
 }
 
 func (s *Service) listComplexesPaginated(ctx context.Context, params listComplexParams) (PaginatedComplexes, error) {
@@ -101,6 +105,44 @@ func (s *Service) listComplexesPaginated(ctx context.Context, params listComplex
 			bson.M{"city": bson.M{"$regex": re, "$options": "i"}},
 			bson.M{"address": bson.M{"$regex": re, "$options": "i"}},
 		}
+	}
+
+	// Sport and price filters live on halls, not complexes, so resolve the
+	// matching complex ids up front and narrow the main filter by them. Doing
+	// this before Count/FindAll (rather than filtering the already-paginated
+	// result, as ComplexListItem.SportIDs/LowestPrice are computed per-page in
+	// summarizeComplex below) keeps Total and pagination accurate.
+	if params.SportID != "" || params.MaxPrice > 0 || params.MinPrice > 0 {
+		hallFilter := bson.M{
+			"is_active": true,
+			"status":    bson.M{"$in": bson.A{HallApproved, HallPublished, ""}},
+		}
+		if params.SportID != "" {
+			hallFilter["supported_sport_ids"] = params.SportID
+		}
+		if params.MaxPrice > 0 || params.MinPrice > 0 {
+			priceFilter := bson.M{}
+			if params.MinPrice > 0 {
+				priceFilter["$gte"] = params.MinPrice
+			}
+			if params.MaxPrice > 0 {
+				priceFilter["$lte"] = params.MaxPrice
+			}
+			hallFilter["base_price"] = priceFilter
+		}
+		matchingHalls, err := s.halls.FindAll(ctx, hallFilter, database.Page{Limit: 1000})
+		if err != nil {
+			return PaginatedComplexes{}, err
+		}
+		complexIDSet := map[string]struct{}{}
+		for _, h := range matchingHalls {
+			complexIDSet[h.ComplexID] = struct{}{}
+		}
+		complexIDs := make(bson.A, 0, len(complexIDSet))
+		for id := range complexIDSet {
+			complexIDs = append(complexIDs, id)
+		}
+		filter["_id"] = bson.M{"$in": complexIDs}
 	}
 
 	limit := params.Limit
@@ -267,6 +309,19 @@ func (s *Service) getComplexSummary(ctx context.Context, id string) (ComplexList
 	return s.summarizeComplex(ctx, item)
 }
 
+// SummarizeComplex is an exported wrapper for other packages (e.g. discovery)
+// that need the same lowest-price / available-slot enrichment logic used
+// internally for the public complex list.
+func (s *Service) SummarizeComplex(ctx context.Context, item Complex) (ComplexListItem, error) {
+	return s.summarizeComplex(ctx, item)
+}
+
+// ListPublished returns published complexes, capped at limit. Used by the
+// discovery package to build the featured-venues ranking.
+func (s *Service) ListPublished(ctx context.Context, limit int) ([]Complex, error) {
+	return s.complexes.FindAll(ctx, bson.M{"status": ComplexPublished}, database.Page{Limit: int64(limit)})
+}
+
 func defaultCoordinates(lat, lng float64) (float64, float64) {
 	if lat == 0 && lng == 0 {
 		return 35.6892, 51.3890
@@ -274,7 +329,28 @@ func defaultCoordinates(lat, lng float64) (float64, float64) {
 	return lat, lng
 }
 
+// assertNoDuplicateVenue rejects a new complex whose name (case-insensitive,
+// trimmed) already exists in the same city, regardless of owner — this
+// blocks the same physical venue from being listed twice on the platform.
+func (s *Service) assertNoDuplicateVenue(ctx context.Context, city, name string) error {
+	re := "^" + regexp.QuoteMeta(strings.TrimSpace(name)) + "$"
+	_, err := s.complexes.FindOne(ctx, bson.M{
+		"city": city,
+		"name": bson.M{"$regex": re, "$options": "i"},
+	})
+	if errors.Is(err, database.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%w: a venue with this name already exists in this city", errormap.ErrConflict)
+}
+
 func (s *Service) createComplex(ctx context.Context, ownerID string, req CreateComplexRequest) (Complex, error) {
+	if err := s.assertNoDuplicateVenue(ctx, req.City, req.Name); err != nil {
+		return Complex{}, err
+	}
 	now := time.Now().UTC()
 	lat, lng := defaultCoordinates(req.Lat, req.Lng)
 	mobile, landline, err := sanitizeContacts(req.ContactMobile, req.ContactLandline)
@@ -330,6 +406,9 @@ func (s *Service) updateComplex(ctx context.Context, ownerID string, id string, 
 	}
 	if !rbac.IsSuperAdmin(ctx) && item.OwnerID != ownerID {
 		return Complex{}, errormap.ErrForbidden
+	}
+	if req.Images != nil && len(req.Images) == 0 {
+		return Complex{}, fmt.Errorf("%w: at least one image is required", errormap.ErrInvalidInput)
 	}
 
 	now := time.Now().UTC()
@@ -426,6 +505,20 @@ func buildComplexUpdate(req UpdateComplexRequest, mobile, landline string, now t
 	return update
 }
 
+// hasUpcomingBookedSlots reports whether any booked, not-yet-started session
+// matches the given hall/complex scope — used to block deactivating a venue
+// or hall out from under an existing reservation.
+func (s *Service) hasUpcomingBookedSlots(ctx context.Context, scope bson.M) (int64, error) {
+	filter := bson.M{
+		"starts_at":    bson.M{"$gte": time.Now().UTC()},
+		"booked_count": bson.M{"$gt": 0},
+	}
+	for k, v := range scope {
+		filter[k] = v
+	}
+	return s.slots.Count(ctx, filter)
+}
+
 func (s *Service) deleteComplex(ctx context.Context, ownerID string, id string) error {
 	item, err := s.complexes.FindByID(ctx, id)
 	if errors.Is(err, database.ErrNotFound) {
@@ -441,6 +534,11 @@ func (s *Service) deleteComplex(ctx context.Context, ownerID string, id string) 
 	// Once moderated, a complex can only be deactivated so existing bookings
 	// and reviews keep a valid reference.
 	if complexModerated(item.Status) {
+		if count, err := s.hasUpcomingBookedSlots(ctx, bson.M{"complex_id": id}); err != nil {
+			return err
+		} else if count > 0 {
+			return fmt.Errorf("%w: this venue has %d upcoming reservation(s); resolve them before deactivating", errormap.ErrConflict, count)
+		}
 		return s.complexes.Update(ctx, id, bson.M{"$set": bson.M{"status": ComplexSuspended, "updated_at": time.Now().UTC()}})
 	}
 
@@ -637,6 +735,9 @@ func (s *Service) updateHall(ctx context.Context, ownerID string, id string, req
 	if err := rbac.RequireOwnerOrAdmin(ctx, complex.OwnerID, ownerID); err != nil {
 		return Hall{}, err
 	}
+	if req.Images != nil && len(req.Images) == 0 {
+		return Hall{}, fmt.Errorf("%w: at least one image is required", errormap.ErrInvalidInput)
+	}
 
 	update := bson.M{"updated_at": time.Now().UTC()}
 	// content tracks whether a moderated field changed. A purely operational
@@ -716,6 +817,11 @@ func (s *Service) deleteHall(ctx context.Context, ownerID string, id string) err
 	if err := rbac.RequireOwnerOrAdmin(ctx, complex.OwnerID, ownerID); err != nil {
 		return err
 	}
+	if count, err := s.hasUpcomingBookedSlots(ctx, bson.M{"hall_id": id}); err != nil {
+		return err
+	} else if count > 0 {
+		return fmt.Errorf("%w: this hall has %d upcoming reservation(s); resolve them before deactivating", errormap.ErrConflict, count)
+	}
 	return s.halls.Update(ctx, id, bson.M{"$set": bson.M{"is_active": false, "updated_at": time.Now().UTC()}})
 }
 
@@ -782,6 +888,7 @@ func (s *Service) createSlot(ctx context.Context, ownerID string, req CreateSlot
 		MinDepositAmount:           req.MinDepositAmount,
 		CancellationPolicySnapshot: complex.CancellationPolicy,
 		Notes:                      req.Notes,
+		Gender:                     req.Gender,
 		CreatedBy:                  ownerID,
 		CreatedAt:                  now,
 		UpdatedAt:                  now,
@@ -835,6 +942,9 @@ func (s *Service) updateSlot(ctx context.Context, ownerID string, id string, req
 	}
 	if req.AdminComment != nil {
 		update["admin_comment"] = *req.AdminComment
+	}
+	if req.Gender != nil {
+		update["gender"] = *req.Gender
 	}
 
 	// Time edits come from drag-to-move / drag-to-resize on the calendar.

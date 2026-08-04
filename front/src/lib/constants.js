@@ -64,6 +64,12 @@ export const SLOT_STATUS = {
   expired: { label: "منقضی", tone: "muted" },
 };
 
+// Per-session gender restriction (empty/unset = inherits the hall's gender_rule).
+export const SLOT_GENDER = {
+  male: { label: "آقایان", tone: "primary" },
+  female: { label: "بانوان", tone: "primary" },
+};
+
 // Booking fill level derived from booked_count vs capacity (see lib/sessions.js).
 export const SESSION_FILL = {
   available: { label: "خالی", tone: "success" },
@@ -75,6 +81,7 @@ export const BOOKING_STATUS = {
   pending: { label: "در انتظار", tone: "warning" },
   awaiting_payment: { label: "در انتظار پرداخت", tone: "warning" },
   confirmed: { label: "تأیید شده", tone: "success" },
+  cancellation_requested: { label: "درخواست لغو (در انتظار تأیید)", tone: "warning" },
   cancelled_by_user: { label: "لغو شده توسط شما", tone: "destructive" },
   cancelled_by_owner: { label: "لغو شده توسط مجموعه", tone: "destructive" },
   expired: { label: "منقضی", tone: "muted" },
@@ -102,6 +109,18 @@ export const PAYMENT_STATUS = {
   partially_refunded: { label: "بازپرداخت جزئی", tone: "muted" },
 };
 
+export const TICKET_STATUS = {
+  open: { label: "باز", tone: "warning" },
+  in_progress: { label: "در حال بررسی", tone: "primary" },
+  resolved: { label: "حل‌شده", tone: "success" },
+  closed: { label: "بسته‌شده", tone: "muted" },
+};
+
+export const TICKET_CATEGORY = {
+  contact: "پیام عمومی",
+  bug: "گزارش باگ",
+};
+
 export const SPORTS = [
   { id: "sport-futsal", name: "فوتسال", slug: "futsal" },
   { id: "sport-football", name: "فوتبال", slug: "football" },
@@ -110,7 +129,109 @@ export const SPORTS = [
   { id: "sport-tennis", name: "تنیس", slug: "tennis" },
 ];
 
-export const CITIES = ["تهران", "کرج", "اصفهان", "مشهد", "شیراز", "تبریز"];
+// Provincial capitals plus other well-known major cities across all 31
+// provinces. Not an exhaustive nationwide list — venue owners enter their own
+// city as free text; this only powers the search-page city filter dropdown.
+export const CITIES = [
+  "تهران",
+  "کرج",
+  "اصفهان",
+  "مشهد",
+  "شیراز",
+  "تبریز",
+  "اهواز",
+  "قم",
+  "کرمانشاه",
+  "ارومیه",
+  "رشت",
+  "زاهدان",
+  "همدان",
+  "یزد",
+  "اردبیل",
+  "بندرعباس",
+  "اراک",
+  "کرمان",
+  "زنجان",
+  "سنندج",
+  "قزوین",
+  "خرم‌آباد",
+  "گرگان",
+  "ساری",
+  "بوشهر",
+  "بجنورد",
+  "ایلام",
+  "یاسوج",
+  "شهرکرد",
+  "سمنان",
+  "بیرجند",
+  "شاهرود",
+  "نیشابور",
+  "سبزوار",
+  "تربت حیدریه",
+  "کاشان",
+  "نجف‌آباد",
+  "خمینی‌شهر",
+  "شاهین‌شهر",
+  "مرودشت",
+  "جهرم",
+  "کازرون",
+  "لار",
+  "مراغه",
+  "میانه",
+  "اهر",
+  "مرند",
+  "خوی",
+  "مهاباد",
+  "بوکان",
+  "سلماس",
+  "دزفول",
+  "آبادان",
+  "خرمشهر",
+  "بندر ماهشهر",
+  "اندیمشک",
+  "شوشتر",
+  "بهبهان",
+  "بابل",
+  "آمل",
+  "قائم‌شهر",
+  "بهشهر",
+  "نوشهر",
+  "چالوس",
+  "رامسر",
+  "لاهیجان",
+  "بندرانزلی",
+  "لنگرود",
+  "رودسر",
+  "آستارا",
+  "سیرجان",
+  "رفسنجان",
+  "بم",
+  "جیرفت",
+  "اسلام‌آباد غرب",
+  "بروجرد",
+  "الیگودرز",
+  "دورود",
+  "میناب",
+  "قشم",
+  "بندرلنگه",
+  "گنبدکاووس",
+  "علی‌آباد کتول",
+  "گچساران",
+];
+
+// Contact number shown in the footer and the "Contact Us" ticket modal.
+export const SUPPORT_PHONE = "09058026688";
+
+// Maps a status "tone" (used throughout Badge/StatusBadge) to a chart color,
+// so the one chart that legitimately encodes state (reservations by status)
+// reuses the same semantics as its badges instead of inventing new hues.
+export const TONE_CHART_COLOR = {
+  primary: "hsl(var(--primary))",
+  success: "hsl(var(--success))",
+  destructive: "hsl(var(--destructive))",
+  warning: "#f59e0b",
+  muted: "hsl(var(--muted-foreground))",
+};
 
 // All 31 Iranian provinces (استان‌ها). Used as the offline fallback for the
 // province picker; the live list comes from the backend GET /provinces.

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   ArrowRight,
   CreditCard,
+  Layers,
 } from "lucide-react";
 
 import { PageTransition, EmptyState } from "@/components/PageTransition";
@@ -49,6 +50,10 @@ export default function Reservation() {
     }
     setSubmitting(true);
     try {
+      // No real payment gateway is wired up yet — simulate the processing
+      // delay so a logged-in payment reads as an actual mock payment flow
+      // rather than an instant database write.
+      await new Promise((r) => setTimeout(r, 900));
       await createBooking({ slot_id: pending.slot.id, payment_type: "full_online" });
       clearPendingReservation();
       navigate("/my-reservations?success=1");
@@ -142,13 +147,31 @@ export default function Reservation() {
               <CardHeader>
                 <CardTitle>روش پرداخت</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="flex items-start gap-3 rounded-xl border border-primary bg-primary/5 p-4">
                   <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                   <span>
                     <span className="block text-sm font-semibold">پرداخت کامل آنلاین</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       کل مبلغ رزرو به‌صورت آنلاین و امن پرداخت می‌شود.
+                    </span>
+                  </span>
+                </div>
+
+                <div
+                  className="flex cursor-not-allowed items-start gap-3 rounded-xl border border-border bg-muted/40 p-4 opacity-60"
+                  title="این روش پرداخت هنوز فعال نشده است"
+                >
+                  <Layers className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      پرداخت اقساطی
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        به‌زودی
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      پرداخت مبلغ رزرو در چند قسط.
                     </span>
                   </span>
                 </div>
@@ -192,7 +215,7 @@ export default function Reservation() {
                   disabled={submitting}
                 >
                   {submitting ? <Spinner /> : <CheckCircle2 className="h-5 w-5" />}
-                  {submitting ? "در حال ثبت..." : "تأیید و رزرو"}
+                  {submitting ? "در حال پردازش پرداخت..." : "تأیید و رزرو"}
                 </Button>
 
                 <p className="flex items-center justify-center gap-1.5 pt-1 text-xs text-muted-foreground">

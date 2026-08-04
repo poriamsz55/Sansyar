@@ -7,18 +7,20 @@ import {
   CalendarClock,
   Ticket,
   LogOut,
-  Menu,
+  MoreHorizontal,
+  X,
   ExternalLink,
 } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
+import BottomNav from "@/components/BottomNav";
 import { useAuth } from "@/context/AuthContext";
 import { ROLE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/owner/dashboard", label: "داشبورد", icon: LayoutDashboard },
-  { to: "/owner/venues", label: "مجموعه‌ها و سالن‌ها", icon: Building2 },
+  { to: "/owner/venues", label: "مجموعه‌ها و سالن‌ها", shortLabel: "مجموعه‌ها", icon: Building2 },
   { to: "/owner/slots", label: "سانس‌ها", icon: CalendarClock },
   { to: "/owner/reservations", label: "رزروها", icon: Ticket },
 ];
@@ -39,8 +41,15 @@ export default function OwnerLayout() {
   function SidebarContent() {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex h-16 items-center border-b border-border px-6">
+        <div className="flex h-16 items-center justify-between border-b border-border px-6">
           <Logo />
+          <button
+            className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground lg:hidden"
+            onClick={() => setOpen(false)}
+            aria-label="بستن منو"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="px-4 py-3">
@@ -106,7 +115,7 @@ export default function OwnerLayout() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm lg:hidden"
               onClick={() => setOpen(false)}
             />
             <motion.aside
@@ -114,7 +123,7 @@ export default function OwnerLayout() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="fixed inset-y-0 right-0 z-50 w-60 border-l border-border bg-card lg:hidden"
+              className="fixed inset-y-0 right-0 z-[60] w-60 border-l border-border bg-card lg:hidden"
             >
               <SidebarContent />
             </motion.aside>
@@ -125,9 +134,6 @@ export default function OwnerLayout() {
       <div className="lg:pr-60">
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card/95 px-4 backdrop-blur-lg lg:px-8">
           <div className="flex items-center gap-3">
-            <button className="rounded-lg p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="منو">
-              <Menu className="h-5 w-5" />
-            </button>
             <h1 className="text-base font-bold">{titles[location.pathname] || "داشبورد مجموعه"}</h1>
           </div>
           <div className="flex items-center gap-2 rounded-xl bg-muted px-3 py-1.5">
@@ -141,10 +147,20 @@ export default function OwnerLayout() {
           </div>
         </header>
 
-        <main className="p-4 lg:p-8">
+        <main className="p-4 pb-24 lg:p-8">
           <Outlet />
         </main>
       </div>
+
+      <BottomNav
+        items={nav}
+        action={{
+          label: "بیشتر",
+          icon: MoreHorizontal,
+          active: open,
+          onClick: () => setOpen(true),
+        }}
+      />
     </div>
   );
 }

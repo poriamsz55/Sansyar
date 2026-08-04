@@ -13,6 +13,7 @@ import {
   PowerOff,
   Hourglass,
   AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,7 +52,7 @@ import {
   complexModerated,
   mergePendingChanges,
 } from "@/lib/constants";
-import { toFa, formatToman } from "@/lib/utils";
+import { cn, toFa, formatToman } from "@/lib/utils";
 import {
   isIranMobile,
   isIranLandline,
@@ -208,6 +209,12 @@ export default function OwnerVenues() {
         return false;
       }
     }
+    if (s === 2) {
+      if (!complexForm.banner) {
+        toast("تصویر بنر مجموعه را آپلود کنید", "error");
+        return false;
+      }
+    }
     return true;
   }
 
@@ -217,7 +224,7 @@ export default function OwnerVenues() {
   }
 
   async function submitComplex() {
-    if (!validateComplexStep(0) || !validateComplexStep(1)) return;
+    if (!validateComplexStep(0) || !validateComplexStep(1) || !validateComplexStep(2)) return;
     setSaving(true);
     try {
       const { banner, gallery, ...rest } = complexForm;
@@ -299,13 +306,15 @@ export default function OwnerVenues() {
 
   const setH = (key, value) => setHallForm((f) => ({ ...f, [key]: value }));
 
-  // The hall sports chip input works with display names. Known sports map back
-  // to their canonical id; anything else is stored as a custom sport name.
-  const sportIdByName = Object.fromEntries(sports.map((s) => [s.name.trim().toLowerCase(), s.id]));
-  const sportLabels = hallForm.supported_sport_ids.map((id) => sportName(id));
-  function setHallSports(labels) {
-    const ids = labels.map((l) => sportIdByName[l.trim().toLowerCase()] || l.trim());
-    setH("supported_sport_ids", ids);
+  // Halls can only be tagged with real sports from the platform's master
+  // list (managed by the super admin) — no free-typed pseudo-sports.
+  function toggleHallSport(id) {
+    setHallForm((f) => ({
+      ...f,
+      supported_sport_ids: f.supported_sport_ids.includes(id)
+        ? f.supported_sport_ids.filter((x) => x !== id)
+        : [...f.supported_sport_ids, id],
+    }));
   }
 
   async function submitHall() {
@@ -315,6 +324,10 @@ export default function OwnerVenues() {
     }
     if (!Number(hallForm.base_price)) {
       toast("قیمت پایه را وارد کنید", "error");
+      return;
+    }
+    if (!hallForm.banner) {
+      toast("تصویر بنر سالن را آپلود کنید", "error");
       return;
     }
     setSaving(true);
@@ -366,6 +379,16 @@ export default function OwnerVenues() {
         }
       },
     });
+  }
+
+  async function activateHall(h) {
+    try {
+      await updateHall(h.id, { is_active: true });
+      toast("سالن فعال شد");
+      load();
+    } catch (err) {
+      toast(err.message, "error");
+    }
   }
 
   // ---- Render -----------------------------------------------------------------
@@ -536,9 +559,13 @@ export default function OwnerVenues() {
                               <Button variant="ghost" size="sm" onClick={() => openEditHall(c, h)}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              {h.is_active && (
-                                <Button variant="ghost" size="sm" onClick={() => askDeleteHall(h)}>
+                              {h.is_active ? (
+                                <Button variant="ghost" size="sm" onClick={() => askDeleteHall(h)} title="غیرفعال‌سازی">
                                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              ) : (
+                                <Button variant="ghost" size="sm" onClick={() => activateHall(h)} title="فعال‌سازی">
+                                  <RotateCcw className="h-3.5 w-3.5 text-success" />
                                 </Button>
                               )}
                             </div>
@@ -752,14 +779,34 @@ export default function OwnerVenues() {
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>ورزش‌ها</Label>
-              <TagInput
-                value={sportLabels}
-                onChange={setHallSports}
-                suggestions={sports.map((s) => s.name)}
-                placeholder="افزودن ورزش (مثلاً فوتسال)…"
-              />
+              {sports.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  هنوز رشته ورزشی‌ای در پلتفرم ثبت نشده است.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {sports.map((s) => {
+                    const selected = hallForm.supported_sport_ids.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => toggleHallSport(s.id)}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                          selected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-accent"
+                        )}
+                      >
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                ورزش‌های استاندارد را انتخاب یا ورزش دلخواه خود را اضافه کنید.
+                یک یا چند رشته ورزشی پشتیبانی‌شده در این سالن را انتخاب کنید.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -797,6 +844,9 @@ export default function OwnerVenues() {
                 onChange={(e) => setH("base_price", e.target.value)}
               />
               <p className="text-xs text-muted-foreground">{formatToman(hallForm.base_price)} تومان / سانس</p>
+              <p className="text-xs text-muted-foreground">
+                این قیمت به‌صورت پیش‌فرض روی سانس‌های این سالن اعمال می‌شود؛ قیمت هر سانس را بعداً می‌توانید جداگانه ویرایش کنید.
+              </p>
             </div>
           </div>
 

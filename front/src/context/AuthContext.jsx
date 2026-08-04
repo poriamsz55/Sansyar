@@ -58,12 +58,24 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Merge freshly-fetched/edited profile fields into the stored session user
+  // (e.g. after PATCH /me) without forcing a re-login.
+  function updateUser(patch) {
+    setUser((prev) => {
+      const next = { ...prev, ...patch };
+      const remember = !!localStorage.getItem(USER_KEY);
+      persistUser(next, remember);
+      return next;
+    });
+  }
+
   const value = {
     user,
     login,
     register,
     loginWithOtp,
     logout,
+    updateUser,
     isAuthenticated: !!user,
     isSuperAdmin: user?.role === "super_admin",
     isVenueOwner: user?.role === "venue_owner" || user?.role === "venue_manager",

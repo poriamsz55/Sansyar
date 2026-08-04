@@ -24,7 +24,7 @@ export function Logo({ to = "/", light = false, className }) {
             light ? "text-white/60" : "text-muted-foreground"
           )}
         >
-          رزرو مجموعه‌های ورزشی
+          رزرو آنلاین مجموعه‌های ورزشی
         </span>
       </span>
     </Link>

@@ -35,7 +35,8 @@ export function ToastProvider({ children }) {
   return (
     <>
       {children}
-      <div className="pointer-events-none fixed bottom-4 left-4 z-[100] flex flex-col gap-2">
+      {/* Lifted above the mobile bottom navigation bar */}
+      <div className="pointer-events-none fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-4 z-[100] flex flex-col gap-2 lg:bottom-4">
         {items.map((t) => (
           <div
             key={t.id}

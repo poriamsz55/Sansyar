@@ -47,6 +47,7 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
     status: ["reserved", "expired"].includes(session.status) ? "available" : session.status,
     notes: session.notes || "",
     admin_comment: session.admin_comment || "",
+    gender: session.gender || "",
   }));
   const [saving, setSaving] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -80,6 +81,7 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
         status: form.status,
         notes: form.notes,
         admin_comment: form.admin_comment,
+        gender: form.gender,
       };
       // Reserved sessions keep their original time — never send a new one.
       if (!locked) {
@@ -191,6 +193,14 @@ export default function SessionEditPanel({ session, sportName, onClose, onSaved 
                   {o.label}
                 </option>
               ))}
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>جنسیت</Label>
+            <Select value={form.gender} onChange={(e) => set("gender", e.target.value)}>
+              <option value="">پیش‌فرض سالن</option>
+              <option value="male">آقایان</option>
+              <option value="female">بانوان</option>
             </Select>
           </div>
           <div className="space-y-1.5 sm:col-span-2">

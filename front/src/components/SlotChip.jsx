@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { cn, formatTime, toFa } from "@/lib/utils";
-import { SLOT_STATUS } from "@/lib/constants";
+import { cn, formatTimeRange, toFa } from "@/lib/utils";
+import { SLOT_STATUS, SLOT_GENDER } from "@/lib/constants";
 
 /**
  * Selectable time-slot chip. Available slots show their full time range and are
@@ -31,11 +31,15 @@ export function SlotChip({ slot, selected, onSelect }) {
               : "border-border bg-card text-foreground hover:border-primary hover:bg-primary/5"
       )}
     >
-      <span
-        dir="ltr"
-        className={cn("text-sm font-bold tnum", reserved && "line-through")}
-      >
-        {formatTime(slot.starts_at)} - {formatTime(slot.ends_at)}
+      <span className="flex items-center gap-1">
+        <span className={cn("text-sm font-bold tnum", reserved && "line-through")}>
+          {formatTimeRange(slot.starts_at, slot.ends_at)}
+        </span>
+        {SLOT_GENDER[slot.gender] && (
+          <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+            ({SLOT_GENDER[slot.gender].label})
+          </span>
+        )}
       </span>
       {slot.discount_percent > 0 && !disabled ? (
         <span

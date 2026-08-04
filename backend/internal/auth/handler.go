@@ -172,6 +172,18 @@ func (h *Handler) Me(c echo.Context) error {
 	return c.JSON(http.StatusOK, user)
 }
 
+func (h *Handler) UpdateProfile(c echo.Context) error {
+	var req UpdateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return errormap.Input(c, "Invalid profile payload")
+	}
+	user, err := h.service.updateProfile(c.Request().Context(), requestctx.UserID(c.Request().Context()), req)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, user)
+}
+
 func (h *Handler) ListUsers(c echo.Context) error {
 	items, err := h.service.listUsers(c.Request().Context(), c.QueryParam("role"))
 	if err != nil {
@@ -212,4 +224,12 @@ func (h *Handler) SuspendUser(c echo.Context) error {
 		return errormap.JSON(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) AdminResetPassword(c echo.Context) error {
+	plain, err := h.service.adminResetPassword(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"password": plain})
 }

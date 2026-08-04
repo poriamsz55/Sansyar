@@ -95,3 +95,44 @@ func (h *Handler) AdminConfirm(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, item)
 }
+
+func (h *Handler) RequestCancel(c echo.Context) error {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind(&body)
+	ownerID := requestctx.UserID(c.Request().Context())
+	complexIDs, err := h.venueService.ComplexIDsForOwner(c.Request().Context(), ownerID)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	item, err := h.service.requestCancel(c.Request().Context(), ownerID, complexIDs, c.Param("id"), body.Reason)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) ApproveCancel(c echo.Context) error {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind(&body)
+	item, err := h.service.approveCancel(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), body.Reason)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
+func (h *Handler) RejectCancel(c echo.Context) error {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.Bind(&body)
+	item, err := h.service.rejectCancel(c.Request().Context(), requestctx.UserID(c.Request().Context()), c.Param("id"), body.Reason)
+	if err != nil {
+		return errormap.JSON(c, err)
+	}
+	return c.JSON(http.StatusOK, item)
+}

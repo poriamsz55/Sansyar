@@ -58,6 +58,10 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "complex_id", Value: 1}, {Key: "status", Value: 1}, {Key: "created_at", Value: -1}}},
 			{Keys: bson.D{{Key: "booking_id", Value: 1}}, Options: options.Index().SetUnique(true)},
 		},
+		"support_tickets": {
+			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}}},
+			{Keys: bson.D{{Key: "status", Value: 1}, {Key: "created_at", Value: -1}}},
+		},
 	}
 
 	// Drop the legacy single-capacity booking index so it does not block the new

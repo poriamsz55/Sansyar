@@ -45,6 +45,25 @@ export function formatJalaliDate(iso) {
   }
 }
 
+/**
+ * Local-timezone calendar date as "YYYY-MM-DD", using the same timezone
+ * resolution Intl.DateTimeFormat applies for formatJalaliDate/Weekday above.
+ * Used to group sessions by day so the bucket a session appears under always
+ * matches the date shown once it's selected (a raw ISO-string date slice is
+ * a UTC date and can disagree with the local date near midnight).
+ */
+export function localDateKey(iso) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return String(iso).slice(0, 10);
+  }
+}
+
 export function formatJalaliWeekday(iso) {
   try {
     return new Intl.DateTimeFormat("fa-IR", { weekday: "long" }).format(

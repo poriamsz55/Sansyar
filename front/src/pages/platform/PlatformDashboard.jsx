@@ -3,30 +3,45 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Building2,
-  Warehouse,
   Ticket,
   TrendingUp,
   Users,
   ShieldCheck,
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import JalaliDatePicker from "@/components/ui/JalaliDatePicker";
+import { TrendChart } from "@/components/charts/TrendChart";
+import { RankBarChart } from "@/components/charts/RankBarChart";
 import {
   listAdminComplexes,
   listAdminHalls,
   listAllBookings,
   listUsers,
   loadVenueLookups,
+  getAdminAnalytics,
 } from "@/api/endpoints";
+import { BOOKING_STATUS, TONE_CHART_COLOR } from "@/lib/constants";
+import { localDateStr, addDays } from "@/lib/sessions";
 import { formatToman, toFa, formatJalaliDate } from "@/lib/utils";
+
+function defaultRange() {
+  const today = new Date();
+  return { from: localDateStr(addDays(today, -29)), to: localDateStr(today) };
+}
 
 export default function PlatformDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [range, setRange] = useState(defaultRange);
+  const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -48,6 +63,11 @@ export default function PlatformDashboard() {
     })();
   }, []);
 
+  useEffect(() => {
+    setAnalytics(null);
+    getAdminAnalytics({ from: range.from, to: range.to }).then(setAnalytics);
+  }, [range.from, range.to]);
+
   if (!data) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -60,16 +80,25 @@ export default function PlatformDashboard() {
 
   const pendingComplexes = data.complexes.filter((c) => c.status === "pending_approval").length;
   const pendingHalls = data.halls.filter((h) => h.status === "pending_approval").length;
-  const revenue = data.bookings
-    .filter((b) => ["confirmed", "completed"].includes(b.status))
-    .reduce((sum, b) => sum + b.final_amount, 0);
 
-  const stats = [
-    { label: "درآمد کل", value: formatToman(revenue), icon: TrendingUp, tone: "bg-primary/20 text-primary" },
-    { label: "مجموعه‌ها", value: toFa(data.complexes.length), icon: Building2, tone: "bg-muted text-foreground" },
-    { label: "مالکان", value: toFa(data.owners.length), icon: Users, tone: "bg-muted text-foreground" },
-    { label: "رزروها", value: toFa(data.bookings.length), icon: Ticket, tone: "bg-muted text-foreground" },
+  const stats = analytics && [
+    {
+      label: "درآمد کل",
+      value: formatToman(analytics.total_revenue),
+      icon: TrendingUp,
+      tone: "bg-primary/20 text-primary",
+      delta: analytics.revenue_by_period.change_pct,
+    },
+    { label: "رزروها", value: toFa(analytics.total_reservations), icon: Ticket, tone: "bg-muted text-foreground" },
+    { label: "مشتریان", value: toFa(analytics.total_customers), icon: Users, tone: "bg-muted text-foreground" },
+    { label: "مجموعه‌های منتشرشده", value: toFa(analytics.total_venues), icon: Building2, tone: "bg-muted text-foreground" },
   ];
+
+  const statusStats = (analytics?.reservations_by_status || []).map((row) => ({
+    ...row,
+    label: BOOKING_STATUS[row.label]?.label || row.label,
+    color: TONE_CHART_COLOR[BOOKING_STATUS[row.label]?.tone] || TONE_CHART_COLOR.muted,
+  }));
 
   return (
     <div className="space-y-6">
@@ -96,22 +125,133 @@ export default function PlatformDashboard() {
         </Link>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className="border-border bg-card">
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-sm text-muted-foreground">{s.label}</p>
-                  <p className="mt-1 text-2xl font-extrabold">{s.value}</p>
-                </div>
-                <span className={`grid h-11 w-11 place-items-center rounded-xl ${s.tone}`}>
-                  <s.icon className="h-5 w-5" />
-                </span>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+      {/* Date range filter for the analytics below */}
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">از تاریخ</label>
+            <JalaliDatePicker value={range.from} onChange={(v) => setRange((r) => ({ ...r, from: v }))} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">تا تاریخ</label>
+            <JalaliDatePicker value={range.to} onChange={(v) => setRange((r) => ({ ...r, to: v }))} />
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setRange(defaultRange())}>
+            ۳۰ روز اخیر
+          </Button>
+        </CardContent>
+      </Card>
+
+      {!stats ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((s, i) => (
+            <motion.div key={s.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+              <Card className="border-border bg-card">
+                <CardContent className="flex items-center justify-between p-5">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{s.label}</p>
+                    <p className="mt-1 text-2xl font-extrabold">{s.value}</p>
+                    {s.delta != null && (
+                      <p className={`mt-1 flex items-center gap-1 text-xs font-medium ${s.delta >= 0 ? "text-success" : "text-destructive"}`}>
+                        {s.delta >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                        {toFa(Math.abs(s.delta).toFixed(1))}٪ نسبت به دوره قبل
+                      </p>
+                    )}
+                  </div>
+                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${s.tone}`}>
+                    <s.icon className="h-5 w-5" />
+                  </span>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Trends */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>روند درآمد</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <TrendChart data={analytics.revenue_trend} color="hsl(var(--primary))" formatValue={(v) => `${formatToman(v)} تومان`} />
+            ) : (
+              <Skeleton className="h-56" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>روند رزرو</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <TrendChart data={analytics.reservation_trend} color="hsl(var(--success))" />
+            ) : (
+              <Skeleton className="h-56" />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Breakdowns */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>رزروها بر اساس وضعیت</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <RankBarChart data={statusStats} dataKey="count" colorFor={(row) => row.color} />
+            ) : (
+              <Skeleton className="h-40" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>محبوب‌ترین رشته‌های ورزشی</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <RankBarChart data={analytics.reservations_by_sport} dataKey="count" />
+            ) : (
+              <Skeleton className="h-40" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>رزروها بر اساس شهر</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <RankBarChart data={analytics.reservations_by_city} dataKey="count" color="hsl(var(--navy))" />
+            ) : (
+              <Skeleton className="h-40" />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>پراکندگی مشتریان بر اساس شهر</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <RankBarChart data={analytics.customer_distribution_by_city} dataKey="count" color="hsl(var(--navy))" />
+            ) : (
+              <Skeleton className="h-40" />
+            )}
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle>برترین مجموعه‌ها از نظر درآمد</CardTitle></CardHeader>
+          <CardContent>
+            {analytics ? (
+              <RankBarChart
+                data={analytics.top_venues}
+                dataKey="revenue"
+                formatValue={(v) => `${formatToman(v)} تومان`}
+              />
+            ) : (
+              <Skeleton className="h-40" />
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

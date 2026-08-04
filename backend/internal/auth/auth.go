@@ -90,6 +90,16 @@ type (
 		Role     *string `json:"role"`
 	}
 
+	// UpdateProfileRequest is the self-service payload authenticated users use
+	// to edit their own profile. Phone is deliberately absent: it's the login
+	// identifier and must stay admin-only to change.
+	UpdateProfileRequest struct {
+		FullName   *string `json:"full_name"`
+		Email      *string `json:"email"`
+		NationalID *string `json:"national_id"`
+		Address    *string `json:"address"`
+	}
+
 	UserWithComplexCount struct {
 		User
 		ComplexCount int `json:"complex_count"`

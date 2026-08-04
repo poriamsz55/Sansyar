@@ -207,6 +207,7 @@ func (s *Service) generateSessions(ctx context.Context, ownerID string, req Gene
 				Status:                     SlotAvailable,
 				PaymentPolicy:              paymentPolicy,
 				CancellationPolicySnapshot: complex.CancellationPolicy,
+				Gender:                     req.Gender,
 				CreatedBy:                  ownerID,
 				CreatedAt:                  now,
 				UpdatedAt:                  now,
@@ -377,6 +378,9 @@ func (s *Service) bulkUpdate(ctx context.Context, ownerID string, req BulkUpdate
 		}
 		if req.Status != nil {
 			set["status"] = *req.Status
+		}
+		if req.Gender != nil {
+			set["gender"] = *req.Gender
 		}
 		if err := s.slots.Update(ctx, id, bson.M{"$set": set}); err != nil {
 			return BulkResult{}, err

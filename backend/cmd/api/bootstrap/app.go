@@ -9,11 +9,13 @@ import (
 	"sansyar/backend/internal/admin"
 	"sansyar/backend/internal/auth"
 	"sansyar/backend/internal/booking"
+	"sansyar/backend/internal/discovery"
 	"sansyar/backend/internal/finance"
 	"sansyar/backend/internal/location"
 	"sansyar/backend/internal/payment"
 	"sansyar/backend/internal/review"
 	"sansyar/backend/internal/sport"
+	"sansyar/backend/internal/support"
 	"sansyar/backend/internal/upload"
 	"sansyar/backend/internal/venue"
 	"sansyar/backend/internal/wallet"
@@ -29,17 +31,19 @@ type App struct {
 	db     *mongo.Database
 	logger *slog.Logger
 
-	authHandler     *auth.Handler
-	sportHandler    *sport.Handler
-	locationHandler *location.Handler
-	adminHandler    *admin.Handler
-	venueHandler    *venue.Handler
-	bookingHandler *booking.Handler
-	paymentHandler *payment.Handler
-	walletHandler  *wallet.Handler
-	reviewHandler  *review.Handler
-	financeHandler *finance.Handler
-	uploadHandler  *upload.Handler
+	authHandler      *auth.Handler
+	sportHandler     *sport.Handler
+	locationHandler  *location.Handler
+	adminHandler     *admin.Handler
+	venueHandler     *venue.Handler
+	bookingHandler   *booking.Handler
+	paymentHandler   *payment.Handler
+	walletHandler    *wallet.Handler
+	reviewHandler    *review.Handler
+	financeHandler   *finance.Handler
+	uploadHandler    *upload.Handler
+	discoveryHandler *discovery.Handler
+	supportHandler   *support.Handler
 }
 
 func NewApp(ctx context.Context) (*App, error) {
@@ -65,6 +69,7 @@ func NewApp(ctx context.Context) (*App, error) {
 	walletAccountRepo := database.NewRepository[wallet.Account](database.GetCollection(db, "wallet_accounts"))
 	walletTransactionRepo := database.NewRepository[wallet.Transaction](database.GetCollection(db, "wallet_transactions"))
 	reviewRepo := database.NewRepository[review.Review](database.GetCollection(db, "reviews"))
+	ticketRepo := database.NewRepository[support.Ticket](database.GetCollection(db, "support_tickets"))
 
 	if err := createIndexes(ctx, db); err != nil {
 		return nil, err
@@ -82,6 +87,9 @@ func NewApp(ctx context.Context) (*App, error) {
 	venueService := venue.NewService(complexRepo, hallRepo, slotRepo, auditRepo)
 	adminService := admin.NewService(userRepo, complexRepo, hallRepo, slotRepo, bookingRepo, paymentRepo, sportRepo)
 	bookingService := booking.NewService(bookingRepo, slotRepo, idempotencyRepo)
+	discoveryService := discovery.NewService(complexRepo, bookingRepo, venueService)
+	supportService := support.NewService(ticketRepo)
+	financeService := finance.NewService(bookingRepo, slotRepo, complexRepo, paymentRepo, venueService)
 
 	storageService, err := storage.NewService(cfg)
 	if err != nil {
@@ -89,20 +97,22 @@ func NewApp(ctx context.Context) (*App, error) {
 	}
 
 	app := &App{
-		cfg:            cfg,
-		db:             db,
-		logger:         log,
-		authHandler:     auth.NewHandler(authService),
-		sportHandler:    sport.NewHandler(sportService),
-		locationHandler: location.NewHandler(locationService),
-		adminHandler:    admin.NewHandler(adminService),
-		venueHandler:    venue.NewHandler(venueService),
-		bookingHandler: booking.NewHandler(bookingService, venueService),
-		paymentHandler: payment.NewHandler(paymentRepo),
-		walletHandler:  wallet.NewHandler(walletAccountRepo, walletTransactionRepo),
-		reviewHandler:  review.NewHandler(reviewRepo),
-		financeHandler: finance.NewHandler(),
-		uploadHandler:  upload.NewHandler(storageService),
+		cfg:              cfg,
+		db:               db,
+		logger:           log,
+		authHandler:      auth.NewHandler(authService),
+		sportHandler:     sport.NewHandler(sportService),
+		locationHandler:  location.NewHandler(locationService),
+		adminHandler:     admin.NewHandler(adminService),
+		venueHandler:     venue.NewHandler(venueService),
+		bookingHandler:   booking.NewHandler(bookingService, venueService),
+		paymentHandler:   payment.NewHandler(paymentRepo),
+		walletHandler:    wallet.NewHandler(walletAccountRepo, walletTransactionRepo),
+		reviewHandler:    review.NewHandler(reviewRepo),
+		financeHandler:   finance.NewHandler(financeService),
+		uploadHandler:    upload.NewHandler(storageService),
+		discoveryHandler: discovery.NewHandler(discoveryService),
+		supportHandler:   support.NewHandler(supportService),
 	}
 
 	// Provinces are reference data the location picker needs in every environment.

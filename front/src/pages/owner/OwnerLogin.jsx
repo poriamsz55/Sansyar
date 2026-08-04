@@ -106,7 +106,7 @@ export default function OwnerLogin() {
           <div className="mt-5 rounded-xl border border-dashed border-border p-3 text-center text-sm">
             <span className="text-muted-foreground">حساب کاربری ندارید؟ </span>
             <Link to="/owner/register" className="font-bold text-primary hover:underline">
-              ثبت‌نام مالک مجموعه
+              ثبت‌نام
             </Link>
           </div>
 
@@ -114,9 +114,6 @@ export default function OwnerLogin() {
             دمو: <b dir="ltr">09120000000</b> + رمز <b dir="ltr">Password123!</b>
           </p>
           <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4 text-center text-sm">
-            <Link to="/platform/login" className="text-muted-foreground hover:text-primary">
-              ورود مدیر ارشد پلتفرم
-            </Link>
             <Link to="/login" className="inline-flex items-center justify-center gap-1 text-muted-foreground hover:text-primary">
               <ArrowRight className="h-4 w-4" />
               ورود مشتری

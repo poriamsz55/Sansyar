@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"strings"
 	"time"
 
@@ -265,6 +267,88 @@ func (s *Service) updateUser(ctx context.Context, id string, req UpdateUserReque
 		return User{}, err
 	}
 	return s.users.FindByID(ctx, id)
+}
+
+// updateProfile applies a self-service edit to the caller's own account. It
+// never touches Phone/Status/Role — those stay admin-only.
+func (s *Service) updateProfile(ctx context.Context, userID string, req UpdateProfileRequest) (User, error) {
+	if _, err := s.users.FindByID(ctx, userID); errors.Is(err, database.ErrNotFound) {
+		return User{}, errormap.ErrNotFound
+	} else if err != nil {
+		return User{}, err
+	}
+
+	update := bson.M{"updated_at": time.Now().UTC()}
+	if req.FullName != nil {
+		update["full_name"] = *req.FullName
+	}
+	if req.Email != nil {
+		update["email"] = *req.Email
+	}
+	if req.NationalID != nil {
+		update["national_id"] = *req.NationalID
+	}
+	if req.Address != nil {
+		update["address"] = *req.Address
+	}
+	if err := s.users.Update(ctx, userID, bson.M{"$set": update}); err != nil {
+		return User{}, err
+	}
+	return s.users.FindByID(ctx, userID)
+}
+
+// tempPasswordCharset excludes visually ambiguous characters (0/O, 1/l/I) so
+// an admin can read a generated password aloud or over a support ticket.
+const tempPasswordCharset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const tempPasswordDigits = "23456789"
+const tempPasswordLength = 12
+
+// generateTempPassword returns a random string satisfying IsStrongPassword
+// (length >= 8, at least one letter and one digit) for one-time admin-issued
+// password resets.
+func generateTempPassword() (string, error) {
+	buf := make([]byte, tempPasswordLength)
+	for i := range buf {
+		charset := tempPasswordCharset
+		if i == 0 {
+			charset = tempPasswordDigits // guarantee at least one digit
+		}
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		buf[i] = charset[n.Int64()]
+	}
+	return string(buf), nil
+}
+
+// adminResetPassword generates and sets a new temporary password for a user
+// (owner or customer) and returns it in plaintext exactly once — the caller
+// must relay it to the user immediately, since it is never stored or
+// re-exposed after this call.
+func (s *Service) adminResetPassword(ctx context.Context, id string) (string, error) {
+	user, err := s.users.FindByID(ctx, id)
+	if errors.Is(err, database.ErrNotFound) {
+		return "", errormap.ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if user.Role == RoleSuperAdmin {
+		return "", errormap.ErrForbidden
+	}
+	plain, err := generateTempPassword()
+	if err != nil {
+		return "", err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	if err := s.users.Update(ctx, id, bson.M{"$set": bson.M{"password_hash": string(hash), "updated_at": time.Now().UTC()}}); err != nil {
+		return "", err
+	}
+	return plain, nil
 }
 
 func (s *Service) suspendUser(ctx context.Context, id string) error {

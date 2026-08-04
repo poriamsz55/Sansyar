@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, UserX, Eye, Building2, Ticket, Banknote, Clock, CreditCard, Home, RotateCcw } from "lucide-react";
+import { Plus, UserX, Eye, Building2, Ticket, Banknote, Clock, CreditCard, Home, RotateCcw, KeyRound, Copy, Check } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { toast } from "@/components/Toast";
-import { adminListOwners, adminGetOwner, createUser, updateUser, suspendUser } from "@/api/endpoints";
+import { adminListOwners, adminGetOwner, createUser, updateUser, suspendUser, adminResetPassword } from "@/api/endpoints";
 import { ROLE } from "@/lib/constants";
 import { toFa, formatToman, formatJalaliDate } from "@/lib/utils";
 
@@ -23,6 +23,7 @@ export default function PlatformOwners() {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  const [resetResult, setResetResult] = useState(null);
 
   async function load() {
     setOwners(await adminListOwners());
@@ -57,6 +58,15 @@ export default function PlatformOwners() {
         toast("حساب فعال شد");
       }
       load();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  async function resetPassword(o) {
+    try {
+      const res = await adminResetPassword(o.id);
+      setResetResult({ name: o.full_name, password: res.password });
     } catch (err) {
       toast(err.message, "error");
     }
@@ -98,6 +108,9 @@ export default function PlatformOwners() {
                         <Button size="sm" variant="outline" onClick={() => setDetailId(o.id)}>
                           <Eye className="h-3.5 w-3.5" /> پروفایل
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => resetPassword(o)} title="بازنشانی رمز عبور">
+                          <KeyRound className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => toggleStatus(o)} title={o.status === "active" ? "تعلیق" : "فعال‌سازی"}>
                           {o.status === "active" ? <UserX className="h-4 w-4 text-destructive" /> : <RotateCcw className="h-4 w-4 text-success" />}
                         </Button>
@@ -133,7 +146,42 @@ export default function PlatformOwners() {
       </Dialog>
 
       {detailId && <OwnerDetail id={detailId} onClose={() => setDetailId(null)} />}
+      {resetResult && <ResetPasswordResult data={resetResult} onClose={() => setResetResult(null)} />}
     </div>
+  );
+}
+
+function ResetPasswordResult({ data, onClose }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(data.password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast("کپی خودکار ممکن نشد؛ رمز را دستی کپی کنید", "error");
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} title="رمز عبور جدید" description={data.name}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          این رمز عبور فقط همین یک‌بار نمایش داده می‌شود؛ آن را برای مالک مجموعه ارسال کنید.
+        </p>
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2.5">
+          <span className="flex-1 font-mono text-base font-bold" dir="ltr">{data.password}</span>
+          <Button type="button" size="sm" variant="outline" onClick={copy}>
+            {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "کپی شد" : "کپی"}
+          </Button>
+        </div>
+        <div className="flex justify-end border-t border-border pt-4">
+          <Button type="button" onClick={onClose}>بستن</Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

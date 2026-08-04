@@ -200,17 +200,103 @@ func (s *Service) adminCancel(ctx context.Context, actorID, bookingID, reason st
 	if item.Status != StatusConfirmed && item.Status != StatusAwaitingPayment && item.Status != StatusPending {
 		return Booking{}, fmt.Errorf("%w: booking cannot be cancelled from current status", errormap.ErrConflict)
 	}
+	return s.finalizeCancellation(ctx, item, actorID, "cancelled_by_admin", reason)
+}
+
+// requestCancel lets a venue owner flag one of their bookings for cancellation.
+// It does not release the slot or compute a refund yet — that only happens
+// once a super admin approves the request via approveCancel.
+func (s *Service) requestCancel(ctx context.Context, actorID string, ownerComplexIDs []string, bookingID, reason string) (Booking, error) {
+	item, err := s.bookings.FindByID(ctx, bookingID)
+	if errors.Is(err, database.ErrNotFound) {
+		return Booking{}, errormap.ErrNotFound
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if !containsID(ownerComplexIDs, item.ComplexID) {
+		return Booking{}, errormap.ErrForbidden
+	}
+	if item.Status != StatusConfirmed {
+		return Booking{}, fmt.Errorf("%w: only confirmed bookings can request cancellation", errormap.ErrConflict)
+	}
+	now := time.Now().UTC()
+	event := BookingEvent{At: now, Action: "cancellation_requested", By: actorID, Note: reason}
+	if err := s.bookings.Update(ctx, bookingID, bson.M{
+		"$set":  bson.M{"status": StatusCancellationRequested, "cancellation_reason": reason, "updated_at": now},
+		"$push": bson.M{"timeline": event},
+	}); err != nil {
+		return Booking{}, err
+	}
+	return s.bookings.FindByID(ctx, bookingID)
+}
+
+// approveCancel finalizes an owner-requested cancellation: computes the
+// refund, releases the slot, and marks the booking cancelled.
+func (s *Service) approveCancel(ctx context.Context, actorID, bookingID, reason string) (Booking, error) {
+	item, err := s.bookings.FindByID(ctx, bookingID)
+	if errors.Is(err, database.ErrNotFound) {
+		return Booking{}, errormap.ErrNotFound
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if item.Status != StatusCancellationRequested {
+		return Booking{}, fmt.Errorf("%w: booking has no pending cancellation request", errormap.ErrConflict)
+	}
+	return s.finalizeCancellation(ctx, item, actorID, "cancellation_approved", reason)
+}
+
+// rejectCancel denies an owner-requested cancellation and restores the
+// booking to confirmed; nothing was released, so there's nothing to undo.
+func (s *Service) rejectCancel(ctx context.Context, actorID, bookingID, reason string) (Booking, error) {
+	item, err := s.bookings.FindByID(ctx, bookingID)
+	if errors.Is(err, database.ErrNotFound) {
+		return Booking{}, errormap.ErrNotFound
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if item.Status != StatusCancellationRequested {
+		return Booking{}, fmt.Errorf("%w: booking has no pending cancellation request", errormap.ErrConflict)
+	}
+	now := time.Now().UTC()
+	event := BookingEvent{At: now, Action: "cancellation_rejected", By: actorID, Note: reason}
+	if err := s.bookings.Update(ctx, bookingID, bson.M{
+		"$set":   bson.M{"status": StatusConfirmed, "updated_at": now},
+		"$unset": bson.M{"cancellation_reason": ""},
+		"$push":  bson.M{"timeline": event},
+	}); err != nil {
+		return Booking{}, err
+	}
+	return s.bookings.FindByID(ctx, bookingID)
+}
+
+// finalizeCancellation computes the refund, records the timeline event,
+// marks the booking cancelled_by_owner, and releases the slot. Shared by
+// adminCancel (direct admin cancellation) and approveCancel (finalizing an
+// owner-requested cancellation).
+func (s *Service) finalizeCancellation(ctx context.Context, item Booking, actorID, action, reason string) (Booking, error) {
 	now := time.Now().UTC()
 	decision := CalculateRefund(item.FinalAmount, item.StartsAt, now, 24, 6, 50)
-	event := BookingEvent{At: now, Action: "cancelled_by_admin", By: actorID, Note: reason}
-	if err := s.bookings.Update(ctx, bookingID, bson.M{
+	event := BookingEvent{At: now, Action: action, By: actorID, Note: reason}
+	if err := s.bookings.Update(ctx, item.ID, bson.M{
 		"$set":  bson.M{"status": StatusCancelledByOwner, "cancellation_reason": reason, "refund_amount": decision.RefundAmount, "cancelled_at": now, "updated_at": now},
 		"$push": bson.M{"timeline": event},
 	}); err != nil {
 		return Booking{}, err
 	}
 	releaseSpot(ctx, s.slots, item.SlotID, now)
-	return s.bookings.FindByID(ctx, bookingID)
+	return s.bookings.FindByID(ctx, item.ID)
+}
+
+func containsID(ids []string, id string) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) adminConfirm(ctx context.Context, actorID, bookingID string) (Booking, error) {

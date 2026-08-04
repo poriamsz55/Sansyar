@@ -127,12 +127,53 @@ export async function verifyOtp(phone, code) {
   return login({ phone });
 }
 
+export async function getMe() {
+  if (!USE_MOCK) {
+    return apiFetch("/me");
+  }
+  await delay();
+  return { id: "user-customer", full_name: "کاربر نمونه", phone: "09350000000", role: "customer" };
+}
+
+export async function updateProfile(payload) {
+  if (!USE_MOCK) {
+    return apiFetch("/me", { method: "PATCH", body: payload });
+  }
+  await delay();
+  return { ...payload };
+}
+
 // ---- Public discovery -----------------------------------------------------
 
 export async function listSports() {
   if (!USE_MOCK) return apiFetch("/sports");
   await delay(150);
   return SPORTS;
+}
+
+// ---- Sports management (platform admin) ------------------------------------
+
+export async function listAdminSports() {
+  if (!USE_MOCK) return apiFetch("/admin/sports");
+  await delay(150);
+  return SPORTS;
+}
+
+export async function createSport(payload) {
+  if (!USE_MOCK) return apiFetch("/admin/sports", { method: "POST", body: payload });
+  await delay();
+  return { id: uid("sport"), is_active: true, ...payload };
+}
+
+export async function updateSport(id, payload) {
+  if (!USE_MOCK) return apiFetch(`/admin/sports/${id}`, { method: "PATCH", body: payload });
+  await delay();
+  return { id, ...payload };
+}
+
+export async function deleteSport(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/sports/${id}`, { method: "DELETE" });
+  await delay();
 }
 
 let provincesCache = null;
@@ -147,18 +188,77 @@ export async function listProvinces() {
   return provincesCache;
 }
 
+// listComplexes returns a plain array by default (used by callers like Home
+// that just want a quick list). Pass `page`/`limit` to opt into the paginated
+// shape `{ items, total, page, limit }`, matching how the backend itself
+// switches response shape based on those params.
 export async function listComplexes(filters = {}) {
+  const paginated = !!(filters.page || filters.limit);
   if (!USE_MOCK) {
     const params = new URLSearchParams();
     if (filters.city) params.set("city", filters.city);
     if (filters.q) params.set("q", filters.q);
+    if (filters.sportId) params.set("sport_id", filters.sportId);
+    if (filters.minPrice) params.set("min_price", String(filters.minPrice));
+    if (filters.maxPrice) params.set("max_price", String(filters.maxPrice));
     if (filters.page) params.set("page", String(filters.page));
     if (filters.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     const data = await apiFetch(`/complexes${qs ? `?${qs}` : ""}`);
-    const items = normalizeComplexList(data);
+    const rawItems = normalizeComplexList(data);
     const sportsMap = await getSportsMap();
-    return items.map((c) =>
+    const items = rawItems.map((c) =>
+      enrichComplex(
+        {
+          ...c,
+          sport_ids: c.sport_ids || [],
+          lowest_price: c.lowest_price ?? 0,
+          available_slot_count: c.available_slot_count ?? 0,
+          discount_percent: c.discount_percent ?? 0,
+        },
+        sportsMap
+      )
+    );
+    if (paginated) {
+      return { items, total: data?.total ?? items.length, page: data?.page ?? filters.page ?? 1, limit: data?.limit ?? filters.limit ?? items.length };
+    }
+    return items;
+  }
+  await delay();
+  let items = store.complexes.map((c) => enrichComplex(c));
+  const { sportId, city, minPrice, maxPrice, q } = filters;
+  if (sportId) items = items.filter((c) => c.sport_ids?.includes(sportId));
+  if (city) items = items.filter((c) => c.city === city);
+  if (minPrice) items = items.filter((c) => c.lowest_price >= minPrice);
+  if (maxPrice) items = items.filter((c) => c.lowest_price <= maxPrice);
+  if (q)
+    items = items.filter(
+      (c) =>
+        c.name.includes(q) || c.city.includes(q) || c.neighborhood?.includes(q)
+    );
+  if (paginated) {
+    return { items, total: items.length, page: filters.page || 1, limit: filters.limit || items.length };
+  }
+  return items;
+}
+
+// Real platform-wide counts for the homepage stats strip.
+export async function getPublicStats() {
+  if (!USE_MOCK) return apiFetch("/stats");
+  await delay(150);
+  return {
+    total_venues: store.complexes.length,
+    total_reservations: store.bookings.length,
+  };
+}
+
+// Published venues ranked by reservation count (most-booked first), for the
+// homepage's "featured venues" row.
+export async function listFeaturedComplexes(limit = 8) {
+  if (!USE_MOCK) {
+    const data = await apiFetch(`/complexes/featured?limit=${limit}`);
+    const sportsMap = await getSportsMap();
+    return (Array.isArray(data) ? data : []).map((c) =>
       enrichComplex(
         {
           ...c,
@@ -171,18 +271,19 @@ export async function listComplexes(filters = {}) {
       )
     );
   }
-  await delay();
-  let items = store.complexes.map((c) => enrichComplex(c));
-  const { sportId, city, maxPrice, q } = filters;
-  if (sportId) items = items.filter((c) => c.sport_ids?.includes(sportId));
-  if (city) items = items.filter((c) => c.city === city);
-  if (maxPrice) items = items.filter((c) => c.lowest_price <= maxPrice);
-  if (q)
-    items = items.filter(
-      (c) =>
-        c.name.includes(q) || c.city.includes(q) || c.neighborhood?.includes(q)
-    );
-  return items;
+  const items = await listComplexes();
+  return items.slice(0, limit);
+}
+
+// Total (non-cancelled/expired) reservations for one venue, shown next to its
+// name on the details page instead of a rating count.
+export async function getComplexBookingCount(id) {
+  if (!USE_MOCK) {
+    const data = await apiFetch(`/complexes/${id}/booking-count`);
+    return data?.booking_count ?? 0;
+  }
+  await delay(100);
+  return store.bookings.filter((b) => b.complex_id === id).length;
 }
 
 export async function getComplex(id) {
@@ -499,10 +600,45 @@ export async function suspendUser(id) {
   await delay();
 }
 
+/** Generates a new temporary password for a user; returns { password } once. */
+export async function adminResetPassword(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/users/${id}/reset-password`, { method: "POST" });
+  await delay();
+  return { password: "Temp1234" };
+}
+
 export async function listOwnerBookings() {
   if (!USE_MOCK) return apiFetch("/owner/bookings");
   await delay();
   return store.bookings;
+}
+
+/** Owner requests cancellation of a confirmed booking; a super admin must approve it. */
+export async function requestCancelBooking(id, reason = "") {
+  if (!USE_MOCK) return apiFetch(`/owner/bookings/${id}/request-cancel`, { method: "POST", body: { reason } });
+  await delay();
+  const b = store.bookings.find((x) => x.id === id);
+  if (b) {
+    b.status = "cancellation_requested";
+    b.cancellation_reason = reason;
+  }
+  return b;
+}
+
+export async function approveCancelBooking(id, reason = "") {
+  if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}/approve-cancel`, { method: "POST", body: { reason } });
+  await delay();
+  const b = store.bookings.find((x) => x.id === id);
+  if (b) b.status = "cancelled_by_owner";
+  return b;
+}
+
+export async function rejectCancelBooking(id, reason = "") {
+  if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}/reject-cancel`, { method: "POST", body: { reason } });
+  await delay();
+  const b = store.bookings.find((x) => x.id === id);
+  if (b) b.status = "confirmed";
+  return b;
 }
 
 export async function createHall(complexId, payload) {
@@ -780,6 +916,113 @@ export async function adminGetBooking(id) {
   if (!USE_MOCK) return apiFetch(`/admin/bookings/${id}`);
   await delay();
   return store.bookings.find((b) => b.id === id) || null;
+}
+
+// ---- Finance / analytics ---------------------------------------------------
+
+export async function getOwnerFinanceSummary() {
+  if (!USE_MOCK) return apiFetch("/owner/finance/summary");
+  await delay();
+  return { total_revenue: 0, online_payments: 0, deposits: 0, refunds: 0, platform_commission: 0, net_settlement: 0 };
+}
+
+export async function getOwnerAnalytics() {
+  if (!USE_MOCK) return apiFetch("/owner/finance/analytics");
+  await delay();
+  return {
+    total_reservations: 0,
+    total_revenue: 0,
+    cancelled_reservations: 0,
+    holiday_closure_days: 0,
+    total_refund_amount: 0,
+    refunded_count: 0,
+    revenue_trend: [],
+    reservation_trend: [],
+  };
+}
+
+export async function getAdminFinanceSummary() {
+  if (!USE_MOCK) return apiFetch("/admin/finance/summary");
+  await delay();
+  return { platform_revenue: 0, failed_payments: 0, pending_settlements: 0 };
+}
+
+export async function getAdminAnalytics({ from, to } = {}) {
+  if (!USE_MOCK) {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return apiFetch(`/admin/finance/analytics${qs ? `?${qs}` : ""}`);
+  }
+  await delay();
+  return {
+    total_revenue: 0,
+    total_reservations: 0,
+    total_customers: 0,
+    total_venues: 0,
+    revenue_trend: [],
+    reservation_trend: [],
+    revenue_by_period: { current: 0, previous: 0, change_pct: 0 },
+    reservations_by_sport: [],
+    reservations_by_city: [],
+    reservations_by_status: [],
+    top_venues: [],
+    customer_distribution_by_city: [],
+  };
+}
+
+// ---- Support (Contact Us / Report a Bug / Tickets) -------------------------
+
+export async function submitTicket({ category = "contact", name, phone, subject, message }) {
+  if (!USE_MOCK)
+    return apiFetch("/support/tickets", {
+      method: "POST",
+      body: { category, name, phone, subject, message },
+    });
+  await delay();
+  return { id: uid("ticket"), category, status: "open" };
+}
+
+/** The current user's own ticket submissions, with any admin reply. */
+export async function myTickets() {
+  if (!USE_MOCK) return apiFetch("/my/tickets");
+  await delay();
+  return [];
+}
+
+/** Paginated, filterable tickets for the platform admin inbox. */
+export async function adminListTickets(filters = {}) {
+  if (!USE_MOCK) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) {
+      if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return apiFetch(`/admin/support/tickets${qs ? `?${qs}` : ""}`);
+  }
+  await delay();
+  return { items: [], total: 0, page: 1, limit: 20 };
+}
+
+export async function adminGetTicket(id) {
+  if (!USE_MOCK) return apiFetch(`/admin/support/tickets/${id}`);
+  await delay();
+  return null;
+}
+
+export async function adminReplyTicket(id, reply) {
+  if (!USE_MOCK)
+    return apiFetch(`/admin/support/tickets/${id}/reply`, { method: "POST", body: { reply } });
+  await delay();
+  return { id, admin_reply: reply };
+}
+
+export async function adminUpdateTicketStatus(id, status) {
+  if (!USE_MOCK)
+    return apiFetch(`/admin/support/tickets/${id}/status`, { method: "PATCH", body: { status } });
+  await delay();
+  return { id, status };
 }
 
 /** @deprecated Use loadVenueLookups() instead when USE_MOCK=false */

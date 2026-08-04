@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Search, Ticket, Banknote, XCircle, Clock, Heart } from "lucide-react";
+import { Eye, Search, Ticket, Banknote, XCircle, Clock, Heart, UserX, RotateCcw } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,8 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { adminListCustomers, adminGetCustomer } from "@/api/endpoints";
+import { toast } from "@/components/Toast";
+import { adminListCustomers, adminGetCustomer, updateUser, suspendUser } from "@/api/endpoints";
 import { toFa, formatToman, formatJalaliDate, formatTime } from "@/lib/utils";
 
 export default function PlatformCustomers() {
@@ -18,9 +19,27 @@ export default function PlatformCustomers() {
   const [q, setQ] = useState("");
   const [detailId, setDetailId] = useState(null);
 
+  async function load() {
+    setCustomers(await adminListCustomers());
+  }
   useEffect(() => {
-    adminListCustomers().then(setCustomers);
+    load();
   }, []);
+
+  async function toggleStatus(c) {
+    try {
+      if (c.status === "active") {
+        await suspendUser(c.id);
+        toast("کاربر مسدود شد");
+      } else {
+        await updateUser(c.id, { status: "active" });
+        toast("کاربر رفع مسدودیت شد");
+      }
+      load();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
 
   const visible = useMemo(() => {
     if (!customers) return null;
@@ -61,9 +80,14 @@ export default function PlatformCustomers() {
                       </Badge>
                     </TD>
                     <TD>
-                      <Button size="sm" variant="outline" onClick={() => setDetailId(c.id)}>
-                        <Eye className="h-3.5 w-3.5" /> پروفایل
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => setDetailId(c.id)}>
+                          <Eye className="h-3.5 w-3.5" /> پروفایل
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => toggleStatus(c)} title={c.status === "active" ? "مسدودسازی" : "رفع مسدودیت"}>
+                          {c.status === "active" ? <UserX className="h-4 w-4 text-destructive" /> : <RotateCcw className="h-4 w-4 text-success" />}
+                        </Button>
+                      </div>
                     </TD>
                   </TR>
                 ))}

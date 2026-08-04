@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Building2,
   MapPin,
@@ -28,6 +29,7 @@ import { EmptyState } from "@/components/PageTransition";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "@/components/Toast";
 import RequestDetail from "@/components/admin/RequestDetail";
+import HallDetail from "@/components/admin/HallDetail";
 import RejectDialog from "@/components/admin/RejectDialog";
 import {
   adminListVenues,
@@ -41,6 +43,7 @@ import {
   publishHall,
   unpublishHall,
   adminDeleteHall,
+  adminUpdateHall,
 } from "@/api/endpoints";
 import { complexDisplayStatus, complexModerated } from "@/lib/constants";
 import { toFa, formatToman } from "@/lib/utils";
@@ -55,11 +58,13 @@ const STATUS_FILTERS = [
 ];
 
 export default function PlatformVenues() {
+  const [params] = useSearchParams();
   const [venues, setVenues] = useState(null);
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() => params.get("status") || "");
   const [detailId, setDetailId] = useState(null);
+  const [hallDetail, setHallDetail] = useState(null);
   const [reject, setReject] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
@@ -79,7 +84,16 @@ export default function PlatformVenues() {
   const visible = useMemo(() => {
     if (!venues) return null;
     return venues.filter((v) => {
-      if (status && v.status !== status) return false;
+      if (status) {
+        // "Pending approval" also surfaces live venues with staged edits and
+        // venues whose only pending item is a hall — matching what the old
+        // dedicated approvals screen used to show as one merged list.
+        const needsReview =
+          status === "pending_approval"
+            ? v.status === "pending_approval" || !!v.pending_changes || v.halls?.some((h) => h.status === "pending_approval")
+            : v.status === status;
+        if (!needsReview) return false;
+      }
       if (q) {
         const hay = `${v.name} ${v.city || ""} ${v.owner_name || ""}`.toLowerCase();
         if (!hay.includes(q.toLowerCase())) return false;
@@ -246,6 +260,9 @@ export default function PlatformVenues() {
                         </div>
                         <div className="flex items-center gap-1">
                           <StatusBadge kind="hall" status={h.status || "approved"} />
+                          <Button size="sm" variant="ghost" onClick={() => setHallDetail({ hall: h, complexName: v.name })} title="جزئیات">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
                           {h.status === "pending_approval" && (
                             <>
                               <Button size="sm" variant="ghost" onClick={() => run(() => approveHall(h.id), "سالن تأیید شد")} title="تأیید"><Check className="h-3.5 w-3.5 text-success" /></Button>
@@ -258,8 +275,12 @@ export default function PlatformVenues() {
                           {h.status === "published" && (
                             <Button size="sm" variant="ghost" onClick={() => run(() => unpublishHall(h.id), "انتشار لغو شد")} title="لغو انتشار"><GlobeLock className="h-3.5 w-3.5 text-muted-foreground" /></Button>
                           )}
-                          {h.is_active !== false && (
+                          {h.is_active !== false ? (
                             <Button size="sm" variant="ghost" onClick={() => askDeleteHall(h)} title="غیرفعال‌سازی"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => run(() => adminUpdateHall(h.id, { is_active: true }), "سالن فعال شد")} title="فعال‌سازی">
+                              <RotateCcw className="h-3.5 w-3.5 text-success" />
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -280,10 +301,15 @@ export default function PlatformVenues() {
           onClose={() => setDetailId(null)}
           onApprove={(v) => run(() => approveComplex(v.id), "تأیید شد")}
           onReject={(v) => setReject({ type: "complex", id: v.id, name: v.name })}
+          onApproveHall={(h) => run(() => approveHall(h.id), "سالن تأیید شد")}
+          onRejectHall={(h) => setReject({ type: "hall", id: h.id, name: h.name })}
         />
       )}
       <RejectDialog open={!!reject} onClose={() => setReject(null)} onConfirm={doReject} subject={reject?.name} />
       <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
+      {hallDetail && (
+        <HallDetail hall={hallDetail.hall} complexName={hallDetail.complexName} onClose={() => setHallDetail(null)} />
+      )}
     </div>
   );
 }

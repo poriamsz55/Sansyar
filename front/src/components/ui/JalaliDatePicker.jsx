@@ -35,11 +35,17 @@ function firstOfJalaliMonth(date) {
  * Gregorian "YYYY-MM-DD" string — the wire format every session/holiday/booking
  * endpoint already expects. Drop-in replacement for <input type="date">.
  */
-export default function JalaliDatePicker({ value, onChange, disabled, placeholder = "انتخاب تاریخ", className }) {
+export default function JalaliDatePicker({ value, onChange, disabled, placeholder = "انتخاب تاریخ", className, min, max }) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => parseLocal(value), [value]);
+  const minDate = useMemo(() => parseLocal(min), [min]);
+  const maxDate = useMemo(() => parseLocal(max), [max]);
   const [viewAnchor, setViewAnchor] = useState(() => selected || startOfDay(new Date()));
   const wrapRef = useRef(null);
+
+  function outOfRange(date) {
+    return (minDate && date < minDate) || (maxDate && date > maxDate);
+  }
 
   // Re-center the grid on the selected value whenever the popover opens.
   useEffect(() => {
@@ -117,16 +123,22 @@ export default function JalaliDatePicker({ value, onChange, disabled, placeholde
             {cells.map(({ date, inMonth }) => {
               const isSel = selected && sameDay(date, selected);
               const isToday = sameDay(date, today);
+              const blocked = outOfRange(date);
               return (
                 <button
                   key={date.toISOString()}
                   type="button"
+                  disabled={blocked}
                   onClick={() => pick(date)}
                   className={cn(
                     "rounded-md py-1.5 text-center text-sm tabular-nums transition-colors",
                     !inMonth && "text-muted-foreground/40",
-                    isSel ? "bg-primary font-bold text-primary-foreground" : "hover:bg-accent",
-                    isToday && !isSel && "ring-1 ring-primary/50"
+                    blocked
+                      ? "cursor-not-allowed text-muted-foreground/30 line-through"
+                      : isSel
+                        ? "bg-primary font-bold text-primary-foreground"
+                        : "hover:bg-accent",
+                    isToday && !isSel && !blocked && "ring-1 ring-primary/50"
                   )}
                 >
                   {jalaliDayNum(date)}
@@ -136,7 +148,12 @@ export default function JalaliDatePicker({ value, onChange, disabled, placeholde
           </div>
 
           <div className="mt-2 flex justify-between border-t border-border pt-2">
-            <button type="button" onClick={() => pick(today)} className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-accent">
+            <button
+              type="button"
+              disabled={outOfRange(today)}
+              onClick={() => pick(today)}
+              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
               امروز
             </button>
             <span className="px-2 py-1 text-[11px] text-muted-foreground" dir="ltr">

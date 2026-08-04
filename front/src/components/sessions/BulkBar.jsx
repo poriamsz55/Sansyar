@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CopyPlus, CalendarRange, Ban, CheckSquare, Layers } from "lucide-react";
+import { CopyPlus, CalendarRange, Ban, CheckSquare, CheckCheck, Layers } from "lucide-react";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { localDateStr, startOfWeek, addDays } from "@/lib/sessions";
  * block a time range (closure/holiday/maintenance), and bulk-edit selected
  * sessions.
  */
-export default function BulkBar({ hall, anchor, selectionMode, setSelectionMode, selectedIds, clearSelection, onDone }) {
+export default function BulkBar({ hall, anchor, selectionMode, setSelectionMode, selectedIds, clearSelection, onSelectAll, hasSessions, onDone }) {
   const [dialog, setDialog] = useState(null); // copy | duplicate | block | bulk
 
   return (
@@ -47,10 +47,16 @@ export default function BulkBar({ hall, anchor, selectionMode, setSelectionMode,
         {selectionMode ? "خروج از انتخاب" : "انتخاب گروهی"}
       </Button>
       {selectionMode && (
-        <Button size="sm" onClick={() => setDialog("bulk")} disabled={selectedIds.size === 0}>
-          <Layers className="h-4 w-4" />
-          ویرایش {toFa(selectedIds.size)} سانس
-        </Button>
+        <>
+          <Button variant="outline" size="sm" onClick={onSelectAll} disabled={!hasSessions}>
+            <CheckCheck className="h-4 w-4" />
+            انتخاب همه
+          </Button>
+          <Button size="sm" onClick={() => setDialog("bulk")} disabled={selectedIds.size === 0}>
+            <Layers className="h-4 w-4" />
+            ویرایش {toFa(selectedIds.size)} سانس
+          </Button>
+        </>
       )}
 
       {dialog === "copy" && (
@@ -210,7 +216,16 @@ function BlockRangeDialog({ hall, anchor, onClose, onDone }) {
 }
 
 function BulkEditDialog({ ids, onClose, onDone }) {
-  const [form, setForm] = useState({ setPrice: false, base_price: 2000000, setDiscount: false, discount_percent: 0, setStatus: false, status: "available" });
+  const [form, setForm] = useState({
+    setPrice: false,
+    base_price: 2000000,
+    setDiscount: false,
+    discount_percent: 0,
+    setStatus: false,
+    status: "available",
+    setGender: false,
+    gender: "",
+  });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -219,6 +234,7 @@ function BulkEditDialog({ ids, onClose, onDone }) {
     if (form.setPrice) payload.base_price = Number(form.base_price);
     if (form.setDiscount) payload.discount_percent = Number(form.discount_percent);
     if (form.setStatus) payload.status = form.status;
+    if (form.setGender) payload.gender = form.gender;
     if (Object.keys(payload).length === 1) {
       toast("حداقل یک تغییر را انتخاب کنید", "error");
       return;
@@ -253,6 +269,13 @@ function BulkEditDialog({ ids, onClose, onDone }) {
             <option value="maintenance">تعمیرات</option>
             <option value="holiday">تعطیل رسمی</option>
             <option value="special_event">رویداد ویژه</option>
+          </Select>
+        </BulkRow>
+        <BulkRow enabled={form.setGender} onToggle={(v) => set("setGender", v)} label="جنسیت">
+          <Select value={form.gender} onChange={(e) => set("gender", e.target.value)} disabled={!form.setGender}>
+            <option value="">پیش‌فرض سالن</option>
+            <option value="male">آقایان</option>
+            <option value="female">بانوان</option>
           </Select>
         </BulkRow>
         <DialogActions saving={saving} onClose={onClose} onSubmit={submit} label="اعمال تغییرات" />

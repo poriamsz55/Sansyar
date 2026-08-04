@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { SlidersHorizontal, Search, MapPinned, XCircle } from "lucide-react";
 
@@ -9,21 +9,23 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { listComplexes, listSports } from "@/api/endpoints";
 import { CITIES } from "@/lib/constants";
 import { toFa } from "@/lib/utils";
 
-const PRICE_STEPS = [
-  { value: "", label: "همه قیمت‌ها" },
-  { value: "2000000", label: "تا ۲۰۰٬۰۰۰ تومان" },
-  { value: "2500000", label: "تا ۲۵۰٬۰۰۰ تومان" },
-  { value: "3000000", label: "تا ۳۰۰٬۰۰۰ تومان" },
-];
+const PAGE_SIZE = 12;
+
+// Prices are stored (and filtered) in Rial; the inputs show Toman, the unit
+// users actually think in, same conversion formatToman() uses everywhere else.
+const RIAL_PER_TOMAN = 10;
 
 export default function ComplexList() {
   const [params, setParams] = useSearchParams();
-  const [all, setAll] = useState(null);
+  const [items, setItems] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [sports, setSports] = useState([]);
 
@@ -31,52 +33,69 @@ export default function ComplexList() {
     q: params.get("q") || "",
     sportId: params.get("sportId") || "",
     city: params.get("city") || "",
+    minPrice: params.get("minPrice") || "",
     maxPrice: params.get("maxPrice") || "",
   };
 
+  // Refetch page 1 whenever a filter changes.
   useEffect(() => {
     let active = true;
     (async () => {
       setError(null);
+      setItems(null);
       try {
-        const [items, sp] = await Promise.all([
-          listComplexes({ city: filters.city || undefined, q: filters.q || undefined }),
+        const [result, sp] = await Promise.all([
+          listComplexes({
+            city: filters.city || undefined,
+            q: filters.q || undefined,
+            sportId: filters.sportId || undefined,
+            minPrice: filters.minPrice || undefined,
+            maxPrice: filters.maxPrice || undefined,
+            page: 1,
+            limit: PAGE_SIZE,
+          }),
           listSports(),
         ]);
         if (active) {
-          setAll(items);
+          setItems(result.items);
+          setTotal(result.total);
+          setPage(1);
           setSports(sp);
         }
       } catch (err) {
         if (active) {
           setError(err.message);
-          setAll([]);
+          setItems([]);
         }
       }
     })();
     return () => {
       active = false;
     };
-  }, [filters.city, filters.q]);
+  }, [filters.city, filters.q, filters.sportId, filters.minPrice, filters.maxPrice]);
 
-  const results = useMemo(() => {
-    if (!all) return null;
-    return all.filter((c) => {
-      if (filters.sportId && !c.sport_ids?.includes(filters.sportId)) return false;
-      if (filters.city && c.city !== filters.city) return false;
-      if (filters.maxPrice && c.lowest_price > Number(filters.maxPrice)) return false;
-      if (
-        filters.q &&
-        !(
-          c.name.includes(filters.q) ||
-          c.city.includes(filters.q) ||
-          c.neighborhood?.includes(filters.q)
-        )
-      )
-        return false;
-      return true;
-    });
-  }, [all, filters.sportId, filters.city, filters.maxPrice, filters.q]);
+  async function loadMore() {
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const result = await listComplexes({
+        city: filters.city || undefined,
+        q: filters.q || undefined,
+        sportId: filters.sportId || undefined,
+        minPrice: filters.minPrice || undefined,
+        maxPrice: filters.maxPrice || undefined,
+        page: nextPage,
+        limit: PAGE_SIZE,
+      });
+      setItems((prev) => [...(prev || []), ...result.items]);
+      setTotal(result.total);
+      setPage(nextPage);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function update(key, value) {
     const next = new URLSearchParams(params);
@@ -85,7 +104,16 @@ export default function ComplexList() {
     setParams(next, { replace: true });
   }
 
-  const hasFilters = filters.sportId || filters.city || filters.maxPrice || filters.q;
+  // The price filters are stored (and sent to the API) in Rial; the input
+  // shows/accepts Toman.
+  function updatePriceToman(key, tomanValue) {
+    const toman = tomanValue.trim();
+    update(key, toman ? String(Number(toman) * RIAL_PER_TOMAN) : "");
+  }
+
+  const hasFilters =
+    filters.sportId || filters.city || filters.minPrice || filters.maxPrice || filters.q;
+  const hasMore = !!items && items.length < total;
 
   return (
     <PageTransition>
@@ -126,7 +154,7 @@ export default function ComplexList() {
                   <Input
                     value={filters.q}
                     onChange={(e) => update("q", e.target.value)}
-                    placeholder="نام مجموعه..."
+                    placeholder="نام مجموعه، شهر یا محله..."
                     className="pr-10"
                   />
                 </div>
@@ -163,17 +191,26 @@ export default function ComplexList() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>حداکثر قیمت</Label>
-                <Select
-                  value={filters.maxPrice}
-                  onChange={(e) => update("maxPrice", e.target.value)}
-                >
-                  {PRICE_STEPS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </Select>
+                <Label>محدوده قیمت (تومان)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="حداقل"
+                    value={filters.minPrice ? String(Number(filters.minPrice) / RIAL_PER_TOMAN) : ""}
+                    onChange={(e) => updatePriceToman("minPrice", e.target.value)}
+                  />
+                  <span className="text-muted-foreground">تا</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="حداکثر"
+                    value={filters.maxPrice ? String(Number(filters.maxPrice) / RIAL_PER_TOMAN) : ""}
+                    onChange={(e) => updatePriceToman("maxPrice", e.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </Card>
@@ -188,19 +225,19 @@ export default function ComplexList() {
           )}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {results
-                ? `${toFa(results.length)} مجموعه یافت شد`
+              {items
+                ? `${toFa(total)} مجموعه یافت شد`
                 : "در حال بارگذاری..."}
             </p>
           </div>
 
-          {!results ? (
+          {!items ? (
             <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-80 w-full" />
               ))}
             </div>
-          ) : results.length === 0 ? (
+          ) : items.length === 0 ? (
             <EmptyState
               icon={MapPinned}
               title="مجموعه‌ای پیدا نشد"
@@ -212,11 +249,20 @@ export default function ComplexList() {
               }
             />
           ) : (
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {results.map((c, i) => (
-                <ComplexCard key={c.id} complex={c} index={i} />
-              ))}
-            </div>
+            <>
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {items.map((c, i) => (
+                  <ComplexCard key={c.id} complex={c} index={i} />
+                ))}
+              </div>
+              {hasMore && (
+                <div className="mt-6 flex justify-center">
+                  <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore ? <Spinner /> : null} بارگذاری بیشتر
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

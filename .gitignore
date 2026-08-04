@@ -8,4 +8,7 @@ coverage/
 backend/tmp/
 backend/bin/
 
+deploy/server/api/sansyar-api
+deploy/*
+
 apps/*/dist/
