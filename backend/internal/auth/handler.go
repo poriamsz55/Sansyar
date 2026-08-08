@@ -130,7 +130,7 @@ func (h *Handler) RequestOTP(c echo.Context) error {
 		return errormap.Input(c, "Invalid OTP request payload")
 	}
 	if err := c.Validate(req); err != nil {
-		return errormap.Input(c, err.Error())
+		return errormap.Input(c, "شماره موبایل معتبر نیست (۰۹xxxxxxxxx)")
 	}
 
 	res, err := h.service.requestOTP(c.Request().Context(), req)
@@ -146,7 +146,7 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 		return errormap.Input(c, "Invalid OTP verify payload")
 	}
 	if err := c.Validate(req); err != nil {
-		return errormap.Input(c, err.Error())
+		return errormap.Input(c, "شماره موبایل یا کد تایید معتبر نیست")
 	}
 
 	res, err := h.service.verifyOTP(c.Request().Context(), req)

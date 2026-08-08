@@ -66,7 +66,7 @@ func Load() *Config {
 		MinIOPublicURL: env("MINIO_PUBLIC_URL", "http://localhost:9000/sansyar"),
 
 		KavenegarAPIKey:      env("KAVENEGAR_API_KEY", ""),
-		KavenegarSender:      env("KAVENEGAR_SENDER", ""),
+		KavenegarSender:      env("KAVENEGAR_SENDER", "2000660110"),
 		KavenegarOTPTemplate: env("KAVENEGAR_OTP_TEMPLATE", ""),
 
 		OTPCodeLength:     intEnv("OTP_CODE_LENGTH", 5),

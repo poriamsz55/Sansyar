@@ -17,6 +17,7 @@ import (
 	"sansyar/backend/pkg/database"
 	"sansyar/backend/pkg/errormap"
 	sansyarjwt "sansyar/backend/pkg/jwt"
+	"sansyar/backend/pkg/validator"
 )
 
 // OTPCode is the active verification code for a phone number. The phone is the
@@ -32,7 +33,7 @@ type OTPCode struct {
 
 type (
 	OTPRequestRequest struct {
-		Phone string `json:"phone" validate:"required,min=8"`
+		Phone string `json:"phone" validate:"required,irmobile"`
 	}
 
 	OTPRequestResponse struct {
@@ -41,13 +42,16 @@ type (
 	}
 
 	OTPVerifyRequest struct {
-		Phone string `json:"phone" validate:"required,min=8"`
+		Phone string `json:"phone" validate:"required,irmobile"`
 		Code  string `json:"code" validate:"required"`
 	}
 )
 
 func (s *Service) requestOTP(ctx context.Context, req OTPRequestRequest) (OTPRequestResponse, error) {
-	phone := strings.TrimSpace(req.Phone)
+	phone, ok := normalizeOTPPhone(req.Phone)
+	if !ok {
+		return OTPRequestResponse{}, errormap.ErrInvalidInput
+	}
 
 	// Demo/sample phone: skip Kavenegar entirely (verifyOTP accepts any code).
 	if s.isDemoPhone(phone) {
@@ -96,7 +100,10 @@ func (s *Service) requestOTP(ctx context.Context, req OTPRequestRequest) (OTPReq
 }
 
 func (s *Service) verifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResponse, error) {
-	phone := strings.TrimSpace(req.Phone)
+	phone, ok := normalizeOTPPhone(req.Phone)
+	if !ok {
+		return AuthResponse{}, errormap.ErrInvalidInput
+	}
 
 	// Demo/sample phone: accept any code without checking Kavenegar or a stored code.
 	if s.isDemoPhone(phone) {
@@ -140,7 +147,10 @@ func (s *Service) verifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResp
 // phone exists when the SMS path is taken, but a missing account short-circuits
 // to avoid burning SMS credit.
 func (s *Service) forgotPassword(ctx context.Context, req ForgotPasswordRequest) (OTPRequestResponse, error) {
-	phone := strings.TrimSpace(req.Phone)
+	phone, ok := normalizeOTPPhone(req.Phone)
+	if !ok {
+		return OTPRequestResponse{}, errormap.ErrInvalidInput
+	}
 
 	user, err := s.users.FindOne(ctx, bson.M{"phone": phone})
 	if errors.Is(err, database.ErrNotFound) {
@@ -191,7 +201,10 @@ func (s *Service) forgotPassword(ctx context.Context, req ForgotPasswordRequest)
 // resetPassword verifies the reset code and sets a new password, clearing any
 // brute-force lock.
 func (s *Service) resetPassword(ctx context.Context, req ResetPasswordRequest) error {
-	phone := strings.TrimSpace(req.Phone)
+	phone, ok := normalizeOTPPhone(req.Phone)
+	if !ok {
+		return errormap.ErrInvalidInput
+	}
 
 	user, err := s.users.FindOne(ctx, bson.M{"phone": phone})
 	if errors.Is(err, database.ErrNotFound) {
@@ -235,6 +248,12 @@ func (s *Service) resetPassword(ctx context.Context, req ResetPasswordRequest) e
 // dev without a working SMS account. Blank OTP_DEMO_PHONE to disable it.
 func (s *Service) isDemoPhone(phone string) bool {
 	return s.cfg.OTPDemoPhone != "" && phone == s.cfg.OTPDemoPhone
+}
+
+// normalizeOTPPhone canonicalizes Iranian mobiles to 09XXXXXXXXX for storage
+// and Kavenegar delivery.
+func normalizeOTPPhone(raw string) (string, bool) {
+	return validator.NormalizeIranMobile(raw)
 }
 
 // issueSession mints an access token for an active user.
