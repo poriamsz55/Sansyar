@@ -1,32 +1,45 @@
 import { Link } from "react-router-dom";
-import { Hexagon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logoOnDark from "@/assets/logo-on-dark.png";
+import logoPlate from "@/assets/logo-plate.png";
+import logoMark from "@/assets/logo-mark.png";
+import logoMarkOnDark from "@/assets/logo-mark-on-dark.png";
 
-export function Logo({ to = "/", light = false, className }) {
+export function Logo({ to = "/", light = false, stacked = false, className }) {
+  const stackedSrc = light ? logoOnDark : logoPlate;
+  const markSrc = light ? logoMarkOnDark : logoMark;
+
   return (
-    <Link to={to} className={cn("flex items-center gap-2.5", className)}>
-      <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-soft">
-        <Hexagon className="h-5 w-5" />
-        <span className="absolute h-1.5 w-1.5 rounded-full bg-success" />
-      </span>
-      <span className="flex flex-col leading-none">
-        <span
-          className={cn(
-            "text-lg font-extrabold tracking-tight",
-            light ? "text-white" : "text-navy"
-          )}
-        >
-          سانسیار
-        </span>
-        <span
-          className={cn(
-            "text-[10px] font-medium",
-            light ? "text-white/60" : "text-muted-foreground"
-          )}
-        >
-          رزرو آنلاین مجموعه‌های ورزشی
-        </span>
-      </span>
+    <Link
+      to={to}
+      aria-label="سانسیار"
+      className={cn("inline-flex items-center gap-2.5", className)}
+    >
+      {stacked ? (
+        <img src={stackedSrc} alt="" className="h-28 w-auto" />
+      ) : (
+        <>
+          <img src={markSrc} alt="" className="h-9 w-auto shrink-0" />
+          <span className="flex flex-col leading-none">
+            <span
+              className={cn(
+                "text-lg font-extrabold tracking-tight",
+                light ? "text-white" : "text-navy"
+              )}
+            >
+              سانسیار
+            </span>
+            <span
+              className={cn(
+                "mt-1 text-[10px] font-medium",
+                light ? "text-white/60" : "text-muted-foreground"
+              )}
+            >
+              پلتفرم جامع خدمات ورزشی
+            </span>
+          </span>
+        </>
+      )}
     </Link>
   );
 }

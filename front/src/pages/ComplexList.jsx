@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PriceRangeSlider } from "@/components/ui/PriceRangeSlider";
 import { Skeleton, Spinner } from "@/components/ui/skeleton";
 import { listComplexes, listSports } from "@/api/endpoints";
 import { CITIES } from "@/lib/constants";
@@ -16,9 +17,17 @@ import { toFa } from "@/lib/utils";
 
 const PAGE_SIZE = 12;
 
-// Prices are stored (and filtered) in Rial; the inputs show Toman, the unit
-// users actually think in, same conversion formatToman() uses everywhere else.
+// Prices are stored (and filtered) in Rial; the slider shows Toman.
 const RIAL_PER_TOMAN = 10;
+const PRICE_MIN_TOMAN = 0;
+const PRICE_MAX_TOMAN = 500000;
+const PRICE_STEP_TOMAN = 10000;
+
+function tomanFromRialParam(value, fallback) {
+  if (!value) return fallback;
+  const n = Number(value) / RIAL_PER_TOMAN;
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export default function ComplexList() {
   const [params, setParams] = useSearchParams();
@@ -36,6 +45,19 @@ export default function ComplexList() {
     minPrice: params.get("minPrice") || "",
     maxPrice: params.get("maxPrice") || "",
   };
+
+  const committedRange = [
+    tomanFromRialParam(filters.minPrice, PRICE_MIN_TOMAN),
+    tomanFromRialParam(filters.maxPrice, PRICE_MAX_TOMAN),
+  ];
+  const [priceDraft, setPriceDraft] = useState(committedRange);
+
+  useEffect(() => {
+    setPriceDraft([
+      tomanFromRialParam(filters.minPrice, PRICE_MIN_TOMAN),
+      tomanFromRialParam(filters.maxPrice, PRICE_MAX_TOMAN),
+    ]);
+  }, [filters.minPrice, filters.maxPrice]);
 
   // Refetch page 1 whenever a filter changes.
   useEffect(() => {
@@ -104,11 +126,13 @@ export default function ComplexList() {
     setParams(next, { replace: true });
   }
 
-  // The price filters are stored (and sent to the API) in Rial; the input
-  // shows/accepts Toman.
-  function updatePriceToman(key, tomanValue) {
-    const toman = tomanValue.trim();
-    update(key, toman ? String(Number(toman) * RIAL_PER_TOMAN) : "");
+  function commitPriceRange([lo, hi]) {
+    const next = new URLSearchParams(params);
+    if (lo > PRICE_MIN_TOMAN) next.set("minPrice", String(Math.round(lo) * RIAL_PER_TOMAN));
+    else next.delete("minPrice");
+    if (hi < PRICE_MAX_TOMAN) next.set("maxPrice", String(Math.round(hi) * RIAL_PER_TOMAN));
+    else next.delete("maxPrice");
+    setParams(next, { replace: true });
   }
 
   const hasFilters =
@@ -191,26 +215,15 @@ export default function ComplexList() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>محدوده قیمت (تومان)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    placeholder="حداقل"
-                    value={filters.minPrice ? String(Number(filters.minPrice) / RIAL_PER_TOMAN) : ""}
-                    onChange={(e) => updatePriceToman("minPrice", e.target.value)}
-                  />
-                  <span className="text-muted-foreground">تا</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    placeholder="حداکثر"
-                    value={filters.maxPrice ? String(Number(filters.maxPrice) / RIAL_PER_TOMAN) : ""}
-                    onChange={(e) => updatePriceToman("maxPrice", e.target.value)}
-                  />
-                </div>
+                <Label>محدوده قیمت</Label>
+                <PriceRangeSlider
+                  min={PRICE_MIN_TOMAN}
+                  max={PRICE_MAX_TOMAN}
+                  step={PRICE_STEP_TOMAN}
+                  value={priceDraft}
+                  onChange={setPriceDraft}
+                  onCommit={commitPriceRange}
+                />
               </div>
             </div>
           </Card>

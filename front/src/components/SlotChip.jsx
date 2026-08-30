@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { cn, formatTimeRange, toFa } from "@/lib/utils";
 import { SLOT_STATUS, SLOT_GENDER } from "@/lib/constants";
+import { isSlotInTheFuture } from "@/lib/reservation";
 
 /**
  * Selectable time-slot chip. Available slots show their full time range and are
@@ -8,10 +9,11 @@ import { SLOT_STATUS, SLOT_GENDER } from "@/lib/constants";
  * holiday…) are disabled and clearly labelled with their specific state so the
  * user can tell a booked session apart from one that's simply closed.
  */
-export function SlotChip({ slot, selected, onSelect }) {
-  const disabled = slot.status !== "available";
+export function SlotChip({ slot, selected, onSelect, className }) {
+  const started = !isSlotInTheFuture(slot);
+  const disabled = slot.status !== "available" || started;
   const reserved = slot.status === "reserved" || slot.booked_count > 0;
-  const statusLabel = SLOT_STATUS[slot.status]?.label || "نامشخص";
+  const statusLabel = started ? "منقضی" : SLOT_STATUS[slot.status]?.label || "نامشخص";
 
   return (
     <motion.button
@@ -21,14 +23,15 @@ export function SlotChip({ slot, selected, onSelect }) {
       onClick={() => onSelect?.(slot)}
       title={disabled ? statusLabel : undefined}
       className={cn(
-        "flex min-w-[110px] flex-col items-center gap-0.5 rounded-xl border px-3 py-2 text-center transition-all",
+        "flex min-w-0 w-full flex-col items-center gap-0.5 rounded-xl border px-3 py-2.5 text-center transition-all",
         reserved
           ? "cursor-not-allowed border-destructive/30 bg-destructive/5 text-destructive/80"
           : disabled
             ? "cursor-not-allowed border-border bg-muted text-muted-foreground line-through"
             : selected
               ? "border-primary bg-primary text-primary-foreground shadow-soft"
-              : "border-border bg-card text-foreground hover:border-primary hover:bg-primary/5"
+              : "border-border bg-card text-foreground hover:border-primary hover:bg-primary/5",
+        className
       )}
     >
       <span className="flex items-center gap-1">

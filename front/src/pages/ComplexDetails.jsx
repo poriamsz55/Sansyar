@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -10,7 +11,7 @@ import {
   Maximize2,
   ArrowLeft,
   ArrowRight,
-  CalendarCheck,
+  X,
 } from "lucide-react";
 
 import { PageTransition } from "@/components/PageTransition";
@@ -18,52 +19,36 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SlotChip } from "@/components/SlotChip";
+import { HallSlotPicker } from "@/components/HallSlotPicker";
 import { VenueLocationDialog } from "@/components/VenueLocationDialog";
 import {
   getComplex,
   listHalls,
   listSlots,
-  getComplexBookingCount,
   myBookings,
 } from "@/api/endpoints";
 import { useSportsMap } from "@/hooks/useSportsMap";
 import { useAuth } from "@/context/AuthContext";
-import { savePendingReservation } from "@/lib/reservation";
+import { savePendingReservation, isSlotInTheFuture } from "@/lib/reservation";
+import { toast } from "@/components/Toast";
+import { startOfWeek, addDays } from "@/lib/sessions";
 import {
   cn,
   formatToman,
   toFa,
   formatJalaliWeekday,
-  formatJalaliDate,
   formatTimeRange,
-  localDateKey,
 } from "@/lib/utils";
 
-function groupByDay(slots) {
-  const map = new Map();
-  for (const s of slots) {
-    const key = localDateKey(s.starts_at);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(s);
-  }
-  return Array.from(map.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, items]) => ({
-      day,
-      items: items.sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
-    }));
-}
-
-/** Describes the date span of a hall's available days for the section header. */
-function describeAvailabilityScope(days) {
-  if (days.length === 0) return null;
-  const today = localDateKey(new Date().toISOString());
-  if (days.length === 1) {
-    return days[0].day === today ? "سانس‌های امروز" : `سانس‌های ${formatJalaliDate(days[0].day)}`;
-  }
-  const span = (new Date(days[days.length - 1].day) - new Date(days[0].day)) / 86400000;
-  return span <= 7 ? "سانس‌های این هفته" : "سانس‌های چند روز آینده";
+/** Sessions whose start falls in the current Iranian week (Sat–Fri, local). */
+function countSlotsThisWeek(slots) {
+  const start = startOfWeek(new Date());
+  const from = start.getTime();
+  const to = addDays(start, 7).getTime();
+  return slots.filter((s) => {
+    const t = new Date(s.starts_at).getTime();
+    return t >= from && t < to;
+  }).length;
 }
 
 export default function ComplexDetails() {
@@ -78,7 +63,6 @@ export default function ComplexDetails() {
   const [error, setError] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
   const [selected, setSelected] = useState(null); // { slot, hall }
-  const [bookingCount, setBookingCount] = useState(null);
   const [hasCompletedBooking, setHasCompletedBooking] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -87,11 +71,10 @@ export default function ComplexDetails() {
     (async () => {
       setError(null);
       try {
-        const [c, h, s, count] = await Promise.all([
+        const [c, h, s] = await Promise.all([
           getComplex(id),
           listHalls(id),
           listSlots({ complexId: id }),
-          getComplexBookingCount(id),
         ]);
         if (!active) return;
         if (!c) {
@@ -100,8 +83,7 @@ export default function ComplexDetails() {
         }
         setComplex(c);
         setHalls(h);
-        setSlots(s);
-        setBookingCount(count);
+        setSlots((s || []).filter(isSlotInTheFuture));
       } catch (err) {
         if (active) setError(err.message);
       }
@@ -137,6 +119,11 @@ export default function ComplexDetails() {
 
   function proceed() {
     if (!selected) return;
+    if (!isSlotInTheFuture(selected.slot)) {
+      toast("این سانس شروع شده و دیگر قابل رزرو نیست.", "error");
+      setSelected(null);
+      return;
+    }
     savePendingReservation({
       complex: { id: complex.id, name: complex.name, city: complex.city },
       hall: { id: selected.hall.id, name: selected.hall.name },
@@ -166,7 +153,7 @@ export default function ComplexDetails() {
 
   return (
     <PageTransition>
-      <div className="container py-8">
+      <div className={cn("container py-8", selected && "pb-36 md:pb-28")}>
         <Link
           to="/complexes"
           className="mb-5 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -194,14 +181,17 @@ export default function ComplexDetails() {
             <div className="absolute inset-0 bg-gradient-to-t from-navy/40 to-transparent" />
           </motion.div>
 
-          <div className="grid grid-cols-3 gap-3 md:grid-cols-2">
+          <div className="flex max-h-64 flex-col gap-3 overflow-y-auto md:max-h-[380px]">
             {complex.images.map((src, i) => (
               <button
                 key={src}
+                type="button"
                 onClick={() => setActiveImg(i)}
                 className={cn(
-                  "relative h-24 overflow-hidden rounded-xl border-2 transition-all md:h-[121px]",
-                  activeImg === i ? "border-primary" : "border-transparent opacity-80"
+                  "relative h-24 w-full shrink-0 overflow-hidden rounded-xl border-2 transition-all md:h-[118px]",
+                  activeImg === i
+                    ? "border-primary opacity-100"
+                    : "border-transparent opacity-80 hover:opacity-100"
                 )}
               >
                 <img src={src} alt="" className="h-full w-full object-cover" />
@@ -213,15 +203,7 @@ export default function ComplexDetails() {
         {/* Header info */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]">
           <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-extrabold md:text-3xl">{complex.name}</h1>
-              {bookingCount != null && (
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                  <CalendarCheck className="h-4 w-4 text-primary" />
-                  {toFa(bookingCount)} رزرو
-                </span>
-              )}
-            </div>
+            <h1 className="text-2xl font-extrabold md:text-3xl">{complex.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <button
                 type="button"
@@ -291,10 +273,8 @@ export default function ComplexDetails() {
             <div className="mt-4 space-y-2 text-sm">
               <Row label="تعداد سالن‌ها" value={`${toFa(halls.length)} سالن`} />
               <Row
-                label="سانس‌های آزاد"
-                value={`${toFa(
-                  slots.filter((s) => s.status === "available").length
-                )} سانس`}
+                label="تعداد سانس‌های این هفته"
+                value={`${toFa(countSlotsThisWeek(slots))} سانس`}
               />
               <Row label="وضعیت" value={<Badge tone="success">فعال</Badge>} />
             </div>
@@ -333,34 +313,47 @@ export default function ComplexDetails() {
         </div>
       </div>
 
-      {/* Sticky selection bar */}
-      <AnimatePresence>
-        {selected && (
-          <motion.div
-            initial={{ y: 80 }}
-            animate={{ y: 0 }}
-            exit={{ y: 80 }}
-            className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-border bg-card/95 backdrop-blur-lg md:bottom-0"
-          >
-            <div className="container flex flex-wrap items-center justify-between gap-3 py-3.5">
-              <div className="flex items-center gap-3 text-sm">
-                <span className="font-bold">{selected.hall.name}</span>
-                <span className="text-muted-foreground">
-                  {formatJalaliWeekday(selected.slot.starts_at)} ساعت{" "}
-                  {formatTimeRange(selected.slot.starts_at, selected.slot.ends_at)}
-                </span>
-                <Badge tone="primary">
-                  {formatToman(selected.slot.final_price)} تومان
-                </Badge>
+      {createPortal(
+        <AnimatePresence>
+          {selected && (
+            <motion.div
+              initial={{ y: 28, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 28, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+              className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 px-3 md:bottom-5 md:px-6"
+            >
+              <div className="pointer-events-auto mx-auto max-w-4xl">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/20 bg-navy/95 px-3 py-3 text-navy-foreground shadow-[0_18px_50px_-18px_hsl(222_47%_8%/0.65)] backdrop-blur-xl md:px-5">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="لغو انتخاب"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{selected.hall.name}</p>
+                    <p className="truncate text-xs text-white/65">
+                      {formatJalaliWeekday(selected.slot.starts_at)} ·{" "}
+                      {formatTimeRange(selected.slot.starts_at, selected.slot.ends_at)}
+                    </p>
+                  </div>
+                  <Badge tone="primary" className="hidden shrink-0 sm:inline-flex">
+                    {formatToman(selected.slot.final_price)} تومان
+                  </Badge>
+                  <Button size="sm" className="shrink-0" onClick={proceed}>
+                    ادامه رزرو
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <Button onClick={proceed}>
-                ادامه رزرو
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       <VenueLocationDialog open={mapOpen} onClose={() => setMapOpen(false)} complex={complex} />
     </PageTransition>
@@ -377,14 +370,10 @@ function Row({ label, value }) {
 }
 
 function HallBlock({ hall, slots, selected, onSelect, sportsMap }) {
-  const days = useMemo(() => groupByDay(slots), [slots]);
-  const [activeDay, setActiveDay] = useState(0);
-  const current = days[activeDay];
-
   return (
     <Card className="overflow-hidden">
-      <div className="grid gap-4 md:grid-cols-[200px_1fr]">
-        <div className="relative h-40 md:h-full">
+      <div className="grid gap-4 lg:grid-cols-[200px_1fr]">
+        <div className="relative h-40 lg:h-full">
           <img
             src={hall.images?.[0]}
             alt={hall.name}
@@ -425,48 +414,15 @@ function HallBlock({ hall, slots, selected, onSelect, sportsMap }) {
             <span>کف‌پوش: {hall.floor_type}</span>
           </div>
 
-          {/* Day selector */}
-          {days.length > 0 ? (
-            <>
-              <p className="mt-4 text-xs font-semibold text-primary">
-                {describeAvailabilityScope(days)}
-              </p>
-              <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
-                {days.map((d, i) => (
-                  <button
-                    key={d.day}
-                    onClick={() => setActiveDay(i)}
-                    className={cn(
-                      "shrink-0 rounded-lg border px-3 py-2 text-center transition-colors",
-                      activeDay === i
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-accent"
-                    )}
-                  >
-                    <span className="block text-xs font-bold">
-                      {formatJalaliWeekday(d.day)}
-                    </span>
-                    <span className="block text-[11px] text-muted-foreground">
-                      {formatJalaliDate(d.day)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
-                {current.items.map((slot) => (
-                  <SlotChip
-                    key={slot.id}
-                    slot={slot}
-                    selected={selected?.slot?.id === slot.id}
-                    onSelect={onSelect}
-                  />
-                ))}
-              </div>
-            </>
+          {slots.length > 0 ? (
+            <HallSlotPicker
+              slots={slots}
+              selectedId={selected?.slot?.id}
+              onSelect={onSelect}
+            />
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">
-              سانسی برای این سالن ثبت نشده است.
+              سانس قابل رزروی برای این سالن باقی نمانده است.
             </p>
           )}
         </div>

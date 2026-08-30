@@ -147,7 +147,7 @@ function Footer() {
     <footer className="mt-16 border-t border-border bg-navy text-navy-foreground">
       <div className="container grid gap-10 py-12 md:grid-cols-4">
         <div className="md:col-span-2">
-          <Logo light />
+          <Logo light stacked />
           <p className="mt-4 max-w-sm text-sm leading-7 text-white/60">
             سانسیار پلتفرم رزرو آنلاین مجموعه‌های ورزشی است؛ سریع، امن و شفاف. سانس
             دلخواهت را پیدا کن و در چند ثانیه رزرو کن.
@@ -187,10 +187,10 @@ function Footer() {
             <li>
               <a
                 href={`tel:${SUPPORT_PHONE}`}
-                dir="ltr"
                 className="flex items-center gap-2 text-white/80 hover:text-white"
               >
-                <Phone className="h-4 w-4" /> {toFa(SUPPORT_PHONE)}
+                <Phone className="h-4 w-4" />
+                <span dir="ltr">{toFa(SUPPORT_PHONE)}</span>
               </a>
             </li>
             <li className="flex items-center gap-2 text-white/80">

@@ -333,7 +333,7 @@ export async function listSlots({ hallId, complexId, status, date } = {}) {
     return apiFetch(`/slots${qs ? `?${qs}` : ""}`);
   }
   await delay(200);
-  let items = store.slots;
+  let items = store.slots.filter((s) => new Date(s.starts_at).getTime() > Date.now());
   if (hallId) items = items.filter((s) => s.hall_id === hallId);
   if (complexId) items = items.filter((s) => s.complex_id === complexId);
   return items;
@@ -352,6 +352,9 @@ export async function createBooking({ slot_id, payment_type }) {
   await delay();
   const slot = store.slots.find((s) => s.id === slot_id);
   if (!slot) throw new Error("سانس یافت نشد");
+  if (new Date(slot.starts_at).getTime() <= Date.now()) {
+    throw new Error("slot is expired");
+  }
   slot.status = "reserved";
   const booking = {
     id: uid("booking"),

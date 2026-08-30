@@ -11,6 +11,7 @@ import {
   ArrowRight,
   CreditCard,
   Layers,
+  Users,
 } from "lucide-react";
 
 import { PageTransition, EmptyState } from "@/components/PageTransition";
@@ -20,6 +21,7 @@ import { Spinner } from "@/components/ui/skeleton";
 import {
   getPendingReservation,
   clearPendingReservation,
+  isSlotInTheFuture,
 } from "@/lib/reservation";
 import { createBooking } from "@/api/endpoints";
 import { toast } from "@/components/Toast";
@@ -40,8 +42,16 @@ export default function Reservation() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setPending(getPendingReservation());
-  }, []);
+    const p = getPendingReservation();
+    if (p?.slot && !isSlotInTheFuture(p.slot)) {
+      clearPendingReservation();
+      toast("این سانس شروع شده و دیگر قابل رزرو نیست.", "error");
+      navigate(p.complex?.id ? `/complexes/${p.complex.id}` : "/complexes", { replace: true });
+      setPending(null);
+      return;
+    }
+    setPending(p);
+  }, [navigate]);
 
   async function confirm() {
     if (!isAuthenticated) {
@@ -172,6 +182,24 @@ export default function Reservation() {
                     </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       پرداخت مبلغ رزرو در چند قسط.
+                    </span>
+                  </span>
+                </div>
+
+                <div
+                  className="flex cursor-not-allowed items-start gap-3 rounded-xl border border-border bg-muted/40 p-4 opacity-60"
+                  title="این روش پرداخت هنوز فعال نشده است"
+                >
+                  <Users className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      پرداخت دونگی
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        به‌زودی
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      هزینه سانس را بین بازیکنان تقسیم کن و هر نفر سهم خودش را بپردازد.
                     </span>
                   </span>
                 </div>

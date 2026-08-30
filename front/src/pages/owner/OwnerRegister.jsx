@@ -91,7 +91,7 @@ export default function OwnerRegister() {
     <div className="owner-theme flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
         <div className="mb-6 flex justify-center">
-          <Logo />
+          <Logo stacked />
         </div>
         <Card className="border-border p-6 shadow-soft sm:p-8">
           <div className="mb-6 text-center">

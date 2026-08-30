@@ -96,6 +96,7 @@ export const PAYMENT_TYPE = {
   deposit_online_remaining_in_person: "بیعانه آنلاین + باقی در محل",
   full_in_person: "پرداخت کامل در محل",
   wallet: "کیف پول",
+  dongi: "پرداخت دونگی",
   mixed: "ترکیبی",
 };
 

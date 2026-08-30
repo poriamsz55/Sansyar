@@ -48,7 +48,7 @@ export default function PlatformLogin() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(262_83%_58%/0.12),transparent_50%)]" />
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-md">
         <div className="mb-6 flex justify-center">
-          <Logo light />
+          <Logo light stacked />
         </div>
         <Card className="border-border bg-card p-8 shadow-soft-lg">
           <div className="mb-6 text-center">

@@ -498,13 +498,27 @@ func (h *Handler) ListSlots(c echo.Context) error {
 	}
 	if status := c.QueryParam("status"); status != "" {
 		filter["status"] = status
+	} else {
+		filter["status"] = bson.M{"$nin": bson.A{SlotExpired}}
 	}
 	if date := c.QueryParam("date"); date != "" {
 		day, err := time.Parse("2006-01-02", date)
 		if err != nil {
 			return errormap.Input(c, "date must use YYYY-MM-DD")
 		}
-		filter["starts_at"] = bson.M{"$gte": day, "$lt": day.Add(24 * time.Hour)}
+		now := time.Now().UTC()
+		start := day
+		end := day.Add(24 * time.Hour)
+		if start.Before(now) {
+			start = now
+		}
+		if !start.Before(end) {
+			return c.JSON(http.StatusOK, []Slot{})
+		}
+		filter["starts_at"] = bson.M{"$gte": start, "$lt": end}
+	} else {
+		// Customers must not see sessions that can no longer be booked.
+		filter["starts_at"] = bson.M{"$gte": time.Now().UTC()}
 	}
 	items, err := h.service.listSlots(c.Request().Context(), filter)
 	if err != nil {

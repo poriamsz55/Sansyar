@@ -19,3 +19,9 @@ export function getPendingReservation() {
 export function clearPendingReservation() {
   sessionStorage.removeItem(KEY);
 }
+
+/** Matches the backend booking rule: a session is gone once its start has passed. */
+export function isSlotInTheFuture(slot) {
+  if (!slot?.starts_at) return false;
+  return new Date(slot.starts_at).getTime() > Date.now();
+}

@@ -4,7 +4,7 @@
 // can't know ahead of time, so static assets are cached on first request
 // (stale-while-revalidate) rather than precached.
 
-const VERSION = "sansyar-v1";
+const VERSION = "sansyar-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -13,10 +13,11 @@ const SHELL_ASSETS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/favicon.svg",
+  "/favicon.png",
   "/icon-192.png",
   "/icon-512.png",
   "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {

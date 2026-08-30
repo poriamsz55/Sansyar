@@ -65,7 +65,7 @@ export default function Home() {
             className="mx-auto max-w-3xl text-center"
           >
             <h1 className="mt-6 text-3xl font-extrabold leading-tight md:text-5xl md:leading-[1.2]">
-              زمین بازیت را آنلاین رزرو کن.
+              زمین بازیت را آنلاین رزرو کن
             </h1>
             <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-white/70">
               بین صدها سالن فوتسال، والیبال، بسکتبال و تنیس بگرد، سانس آزاد را
@@ -117,7 +117,7 @@ export default function Home() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.1 }}
-            className="rounded-xl border border-border bg-card p-6 shadow-soft"
+            className="flex flex-col items-center rounded-xl border border-border bg-card p-6 text-center shadow-soft"
           >
             <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
               <f.icon className="h-6 w-6" />

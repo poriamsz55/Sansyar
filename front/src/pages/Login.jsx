@@ -75,7 +75,7 @@ export default function Login() {
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Visual side */}
       <div className="hero-gradient relative hidden flex-col justify-between p-12 text-white lg:flex">
-        <Logo light />
+        <Logo light stacked />
         <div>
           <h2 className="text-3xl font-extrabold leading-snug">
             رزرو سانس ورزشی،
@@ -97,7 +97,7 @@ export default function Login() {
       <div className="flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex justify-center lg:hidden">
-            <Logo />
+            <Logo stacked />
           </div>
 
           <button
