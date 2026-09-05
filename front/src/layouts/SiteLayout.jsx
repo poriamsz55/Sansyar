@@ -11,6 +11,9 @@ import {
   User,
   LayoutDashboard,
   Phone,
+  PackageCheck,
+  ShoppingBag,
+  ShoppingCart,
 } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
@@ -18,12 +21,15 @@ import { Button } from "@/components/ui/button";
 import BottomNav from "@/components/BottomNav";
 import { ContactModal } from "@/components/ContactModal";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { SUPPORT_PHONE } from "@/lib/constants";
 import { cn, toFa } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "خانه", icon: Home, end: true },
   { to: "/complexes", label: "مجموعه‌ها", icon: Building2 },
+  { to: "/store", label: "فروشگاه", icon: ShoppingBag },
+  { to: "/store/orders", label: "سفارش‌های من", icon: PackageCheck },
   { to: "/my-reservations", label: "رزروهای من", icon: CalendarCheck },
   { to: "/my-tickets", label: "تیکت‌های من", icon: LifeBuoy },
   { to: "/profile", label: "پروفایل", icon: UserRound },
@@ -46,6 +52,25 @@ function NavItem({ to, label, icon: Icon, end }) {
       <Icon className="h-4 w-4" />
       {label}
     </NavLink>
+  );
+}
+
+function CartButton({ className }) {
+  const { cart } = useCart();
+  const count = cart.item_count || 0;
+  return (
+    <Link
+      to="/store/cart"
+      className={cn("relative grid h-10 w-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", className)}
+      aria-label={`سبد خرید (${count} قلم)`}
+    >
+      <ShoppingCart className="h-5 w-5" />
+      {count > 0 && (
+        <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+          {toFa(count)}
+        </span>
+      )}
+    </Link>
   );
 }
 
@@ -73,6 +98,7 @@ export default function SiteLayout() {
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
+            <CartButton />
             {isAuthenticated ? (
               <>
                 {panel && (
@@ -103,6 +129,7 @@ export default function SiteLayout() {
           {/* Navigation itself lives in the bottom bar on mobile; the header
               keeps only the account actions. */}
           <div className="flex items-center gap-1 md:hidden">
+            <CartButton />
             {isAuthenticated ? (
               <>
                 {panel && (
@@ -160,6 +187,11 @@ function Footer() {
             <li>
               <Link to="/complexes" className="hover:text-white">
                 مجموعه‌ها
+              </Link>
+            </li>
+            <li>
+              <Link to="/store" className="hover:text-white">
+                فروشگاه ورزشی
               </Link>
             </li>
             <li>

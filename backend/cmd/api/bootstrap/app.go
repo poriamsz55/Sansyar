@@ -15,6 +15,7 @@ import (
 	"sansyar/backend/internal/payment"
 	"sansyar/backend/internal/review"
 	"sansyar/backend/internal/sport"
+	"sansyar/backend/internal/store"
 	"sansyar/backend/internal/support"
 	"sansyar/backend/internal/upload"
 	"sansyar/backend/internal/venue"
@@ -44,6 +45,7 @@ type App struct {
 	uploadHandler    *upload.Handler
 	discoveryHandler *discovery.Handler
 	supportHandler   *support.Handler
+	storeHandler     *store.Handler
 }
 
 func NewApp(ctx context.Context) (*App, error) {
@@ -70,6 +72,18 @@ func NewApp(ctx context.Context) (*App, error) {
 	walletTransactionRepo := database.NewRepository[wallet.Transaction](database.GetCollection(db, "wallet_transactions"))
 	reviewRepo := database.NewRepository[review.Review](database.GetCollection(db, "reviews"))
 	ticketRepo := database.NewRepository[support.Ticket](database.GetCollection(db, "support_tickets"))
+	storeCategoryRepo := database.NewRepository[store.Category](database.GetCollection(db, "store_categories"))
+	storeBrandRepo := database.NewRepository[store.Brand](database.GetCollection(db, "store_brands"))
+	storeProductRepo := database.NewRepository[store.Product](database.GetCollection(db, "store_products"))
+	storeVariantRepo := database.NewRepository[store.ProductVariant](database.GetCollection(db, "store_product_variants"))
+	storeCartRepo := database.NewRepository[store.Cart](database.GetCollection(db, "store_carts"))
+	storeAddressRepo := database.NewRepository[store.Address](database.GetCollection(db, "store_addresses"))
+	storeOrderRepo := database.NewRepository[store.Order](database.GetCollection(db, "store_orders"))
+	storeSettingsRepo := database.NewRepository[store.StoreSettings](database.GetCollection(db, "store_settings"))
+	storeOrderPaymentRepo := database.NewRepository[store.OrderPayment](database.GetCollection(db, "store_order_payments"))
+	storeInventoryLogRepo := database.NewRepository[store.InventoryLog](database.GetCollection(db, "store_inventory_logs"))
+	storeCouponRepo := database.NewRepository[store.Coupon](database.GetCollection(db, "store_coupons"))
+	storeCouponUsageRepo := database.NewRepository[store.CouponUsage](database.GetCollection(db, "store_coupon_usage"))
 
 	if err := createIndexes(ctx, db); err != nil {
 		return nil, err
@@ -89,6 +103,7 @@ func NewApp(ctx context.Context) (*App, error) {
 	bookingService := booking.NewService(bookingRepo, slotRepo, idempotencyRepo)
 	discoveryService := discovery.NewService(complexRepo, bookingRepo, venueService)
 	supportService := support.NewService(ticketRepo)
+	storeService := store.NewService(storeCategoryRepo, storeBrandRepo, storeProductRepo, storeVariantRepo, storeCartRepo, storeAddressRepo, storeOrderRepo, storeSettingsRepo, userRepo, storeOrderPaymentRepo, storeInventoryLogRepo, storeCouponRepo, storeCouponUsageRepo)
 	financeService := finance.NewService(bookingRepo, slotRepo, complexRepo, paymentRepo, venueService)
 
 	storageService, err := storage.NewService(cfg)
@@ -113,6 +128,7 @@ func NewApp(ctx context.Context) (*App, error) {
 		uploadHandler:    upload.NewHandler(storageService),
 		discoveryHandler: discovery.NewHandler(discoveryService),
 		supportHandler:   support.NewHandler(supportService),
+		storeHandler:     store.NewHandler(storeService),
 	}
 
 	// Provinces are reference data the location picker needs in every environment.
@@ -122,6 +138,9 @@ func NewApp(ctx context.Context) (*App, error) {
 
 	if cfg.SeedData {
 		if err := seedData(ctx, userRepo, sportRepo, complexRepo, hallRepo, slotRepo); err != nil {
+			return nil, err
+		}
+		if err := seedStoreData(ctx, storeCategoryRepo, storeBrandRepo, storeProductRepo, storeVariantRepo); err != nil {
 			return nil, err
 		}
 	}

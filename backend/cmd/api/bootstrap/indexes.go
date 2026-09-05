@@ -62,6 +62,53 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}}},
 			{Keys: bson.D{{Key: "status", Value: 1}, {Key: "created_at", Value: -1}}},
 		},
+		"store_categories": {
+			{Keys: bson.D{{Key: "slug", Value: 1}}, Options: options.Index().SetUnique(true)},
+		},
+		"store_brands": {
+			{Keys: bson.D{{Key: "slug", Value: 1}}, Options: options.Index().SetUnique(true)},
+		},
+		"store_products": {
+			{Keys: bson.D{{Key: "slug", Value: 1}}, Options: options.Index().SetUnique(true)},
+			{Keys: bson.D{{Key: "category_id", Value: 1}, {Key: "status", Value: 1}, {Key: "is_active", Value: 1}}},
+			{Keys: bson.D{{Key: "brand_id", Value: 1}, {Key: "status", Value: 1}, {Key: "is_active", Value: 1}}},
+		},
+		"store_product_variants": {
+			{Keys: bson.D{{Key: "product_id", Value: 1}, {Key: "is_active", Value: 1}}},
+			// SKUs are the operational identifier for stock and orders;
+			// uniqueness is case-insensitive so "abc1" and "ABC1" cannot coexist.
+			{Keys: bson.D{{Key: "sku", Value: 1}}, Options: options.Index().SetUnique(true).SetCollation(&options.Collation{Locale: "en", Strength: 2})},
+		},
+		"store_carts": {
+			// One cart per customer and per guest token (fields are mutually
+			// exclusive; partial indexes keep the empty case unconstrained).
+			{Keys: bson.D{{Key: "user_id", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"user_id": bson.M{"$type": "string"}})},
+			{Keys: bson.D{{Key: "token", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"token": bson.M{"$type": "string"}})},
+		},
+		"store_addresses": {
+			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "is_default", Value: -1}}},
+		},
+		"store_orders": {
+			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}}},
+			{Keys: bson.D{{Key: "status", Value: 1}, {Key: "created_at", Value: -1}}},
+			// Idempotent checkout: one order per user per key.
+			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "idempotency_key", Value: 1}}, Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"idempotency_key": bson.M{"$type": "string"}})},
+		},
+		"store_coupons": {
+			{Keys: bson.D{{Key: "code", Value: 1}}, Options: options.Index().SetUnique(true)},
+		},
+		"store_coupon_usage": {
+			{Keys: bson.D{{Key: "coupon_id", Value: 1}, {Key: "user_id", Value: 1}}},
+			{Keys: bson.D{{Key: "order_id", Value: 1}}, Options: options.Index().SetPartialFilterExpression(bson.M{"order_id": bson.M{"$type": "string"}})},
+		},
+		"store_inventory_logs": {
+			{Keys: bson.D{{Key: "variant_id", Value: 1}, {Key: "at", Value: -1}}},
+			{Keys: bson.D{{Key: "order_id", Value: 1}, {Key: "at", Value: -1}}, Options: options.Index().SetPartialFilterExpression(bson.M{"order_id": bson.M{"$type": "string"}})},
+		},
+		"store_order_payments": {
+			{Keys: bson.D{{Key: "order_id", Value: 1}, {Key: "created_at", Value: -1}}},
+			{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "created_at", Value: -1}}},
+		},
 	}
 
 	// Drop the legacy single-capacity booking index so it does not block the new
@@ -70,6 +117,8 @@ func createIndexes(ctx context.Context, db *mongo.Database) error {
 	_ = db.Collection("bookings").Indexes().DropOne(ctx, "slot_id_1")
 	// Neighborhood was removed from the address model; drop its compound index.
 	_ = db.Collection("complexes").Indexes().DropOne(ctx, "city_1_neighborhood_1")
+	// The variant SKU index moved to a case-insensitive collation.
+	_ = db.Collection("store_product_variants").Indexes().DropOne(ctx, "sku_1")
 
 	for collection, models := range definitions {
 		if len(models) == 0 {

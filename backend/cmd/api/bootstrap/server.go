@@ -57,7 +57,7 @@ func (a *App) NewEcho() *echo.Echo {
 	}))
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowOrigins: a.cfg.CORSOrigins,
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "Idempotency-Key"},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "Idempotency-Key", "X-Cart-Token"},
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 	}))
 	a.setupRoutes(e)

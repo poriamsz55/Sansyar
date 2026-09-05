@@ -1,6 +1,6 @@
 // API surface for Sansyar. Set VITE_USE_MOCK=false to use the Go backend.
 
-import { apiFetch, setToken } from "./client";
+import { apiFetch, setCartToken, setToken } from "./client";
 import * as mock from "../data/mock";
 import { SPORTS, IRAN_PROVINCES } from "../lib/constants";
 
@@ -1031,4 +1031,309 @@ export async function adminUpdateTicketStatus(id, status) {
 /** @deprecated Use loadVenueLookups() instead when USE_MOCK=false */
 export function getStore() {
   return store;
+}
+
+// ---- Store (sports shop) ----------------------------------------------------
+// Store endpoints are real-API only: the storefront has no mock dataset by
+// design (no placeholder content). Functions return the backend's paginated
+// shape { items, total, page, limit } or the entity itself.
+
+function storeParams(filters = {}) {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Public published products: { q, category_id, brand_id, page, limit }. */
+export async function listStoreProducts(filters = {}) {
+  return apiFetch(`/store/products${storeParams(filters)}`);
+}
+
+/** Public product detail by id or slug (with active variants + category/brand). */
+export async function getStoreProduct(idOrSlug) {
+  return apiFetch(`/store/products/${encodeURIComponent(idOrSlug)}`);
+}
+
+export async function listStoreCategories() {
+  return apiFetch("/store/categories");
+}
+
+export async function listStoreBrands() {
+  return apiFetch("/store/brands");
+}
+
+// ---- Store: settings, addresses, checkout, orders ----
+
+/** Public store settings incl. active shipping methods. */
+export async function getStoreSettings() {
+  return apiFetch("/store/settings");
+}
+
+export async function listStoreAddresses() {
+  return apiFetch("/store/addresses");
+}
+
+export async function createStoreAddress(payload) {
+  return apiFetch("/store/addresses", { method: "POST", body: payload });
+}
+
+export async function updateStoreAddress(id, payload) {
+  return apiFetch(`/store/addresses/${id}`, { method: "PATCH", body: payload });
+}
+
+export async function deleteStoreAddress(id) {
+  return apiFetch(`/store/addresses/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Turns the cart into a pending_payment order. `idempotencyKey` makes
+ * double-clicks/retries safe (server returns the original order).
+ */
+export async function storeCheckout({ addressId, newAddress, saveAddress, shippingMethodId, customerNote, idempotencyKey }) {
+  const headers = idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {};
+  return apiFetch("/store/checkout", {
+    method: "POST",
+    headers,
+    body: {
+      address_id: addressId || "",
+      new_address: newAddress || null,
+      save_address: saveAddress || false,
+      shipping_method_id: shippingMethodId,
+      customer_note: customerNote || "",
+    },
+  });
+}
+
+export async function listMyStoreOrders() {
+  return apiFetch("/store/orders");
+}
+
+export async function getMyStoreOrder(id) {
+  return apiFetch(`/store/orders/${id}`);
+}
+
+export async function cancelMyStoreOrder(id) {
+  return apiFetch(`/store/orders/${id}/cancel`, { method: "POST" });
+}
+
+// ---- Store Admin: orders ----
+
+export async function adminListStoreOrders(filters = {}) {
+  return apiFetch(`/admin/store/orders${storeParams(filters)}`);
+}
+
+export async function adminGetStoreOrder(id) {
+  return apiFetch(`/admin/store/orders/${id}`);
+}
+
+export async function adminUpdateStoreOrderStatus(id, status, note, trackingCode) {
+  return apiFetch(`/admin/store/orders/${id}/status`, {
+    method: "PATCH",
+    body: { status, note: note || "", tracking_code: trackingCode || "" },
+  });
+}
+
+// ---- Store: order payment (dev gateway) ----
+
+/** Starts (or reuses) a payment attempt; amount is decided server-side. */
+export async function payStoreOrder(orderId) {
+  return apiFetch(`/store/orders/${orderId}/pay`, { method: "POST" });
+}
+
+/**
+ * Simulated provider callback for the dev gateway page.
+ * @param {"success"|"failure"} result
+ */
+export async function completeStorePayment(paymentId, result) {
+  return apiFetch(`/store/payments/${paymentId}/complete`, {
+    method: "POST",
+    body: { result },
+  });
+}
+
+// ---- Store: cart coupon ----
+
+export async function applyStoreCoupon(code) {
+  return cartOf(await apiFetch("/store/cart/coupon", { method: "POST", body: { code } }));
+}
+
+export async function removeStoreCoupon() {
+  return cartOf(await apiFetch("/store/cart/coupon", { method: "DELETE" }));
+}
+
+// ---- Store Admin: dashboard, settings, customers ----
+
+export async function adminStoreStats() {
+  return apiFetch("/admin/store/stats");
+}
+
+export async function adminUpdateStoreSettings(payload) {
+  return apiFetch("/admin/store/settings", { method: "PUT", body: payload });
+}
+
+export async function adminListStoreCustomers() {
+  return apiFetch("/admin/store/customers");
+}
+
+// ---- Store Admin: coupons ----
+
+export async function adminListStoreCoupons() {
+  return apiFetch("/admin/store/coupons");
+}
+
+export async function adminCreateStoreCoupon(payload) {
+  return apiFetch("/admin/store/coupons", { method: "POST", body: payload });
+}
+
+export async function adminUpdateStoreCoupon(id, payload) {
+  return apiFetch(`/admin/store/coupons/${id}`, { method: "PATCH", body: payload });
+}
+
+export async function adminDeleteStoreCoupon(id) {
+  return apiFetch(`/admin/store/coupons/${id}`, { method: "DELETE" });
+}
+
+// ---- Store Admin: inventory ----
+
+/** All variants with product names, scarcest availability first. */
+export async function adminListInventory() {
+  return apiFetch("/admin/store/inventory");
+}
+
+/** Manual stock adjustment (delta may be negative); audited server-side. */
+export async function adminAdjustStock(variantId, delta, reason) {
+  return apiFetch(`/admin/store/variants/${variantId}/stock`, {
+    method: "POST",
+    body: { delta, reason },
+  });
+}
+
+/** Inventory audit log (newest first); filter by variant/product/order. */
+export async function adminListInventoryLogs({ variantId, productId, orderId } = {}) {
+  const params = new URLSearchParams();
+  if (variantId) params.set("variant_id", variantId);
+  if (productId) params.set("product_id", productId);
+  if (orderId) params.set("order_id", orderId);
+  const qs = params.toString();
+  return apiFetch(`/admin/store/inventory/logs${qs ? `?${qs}` : ""}`);
+}
+
+// Store Admin (super admin) — catalog management.
+
+export async function adminListStoreProducts(filters = {}) {
+  return apiFetch(`/admin/store/products${storeParams(filters)}`);
+}
+
+export async function adminGetStoreProduct(id) {
+  return apiFetch(`/admin/store/products/${id}`);
+}
+
+export async function adminCreateStoreProduct(payload) {
+  return apiFetch("/admin/store/products", { method: "POST", body: payload });
+}
+
+/** Partial update; price/original_price/stock patch the default variant. */
+export async function adminUpdateStoreProduct(id, payload) {
+  return apiFetch(`/admin/store/products/${id}`, { method: "PATCH", body: payload });
+}
+
+export async function adminDeleteStoreProduct(id) {
+  return apiFetch(`/admin/store/products/${id}`, { method: "DELETE" });
+}
+
+export async function adminPublishStoreProduct(id) {
+  return apiFetch(`/admin/store/products/${id}/publish`, { method: "POST" });
+}
+
+export async function adminUnpublishStoreProduct(id) {
+  return apiFetch(`/admin/store/products/${id}/unpublish`, { method: "POST" });
+}
+
+// ---- Store: cart ------------------------------------------------------------
+// All totals/prices come from the backend view; the client never computes
+// money. The cart token is attached automatically by apiFetch.
+
+function cartOf(data) {
+  if (data?.cart_token) setCartToken(data.cart_token);
+  return data?.cart ?? data;
+}
+
+export async function getStoreCart() {
+  return cartOf(await apiFetch("/store/cart"));
+}
+
+export async function addStoreCartItem({ variantId, qty = 1 }) {
+  return cartOf(
+    await apiFetch("/store/cart/items", {
+      method: "POST",
+      body: { variant_id: variantId, qty },
+    })
+  );
+}
+
+export async function updateStoreCartItem(variantId, qty) {
+  return cartOf(
+    await apiFetch(`/store/cart/items/${variantId}`, {
+      method: "PATCH",
+      body: { qty },
+    })
+  );
+}
+
+export async function removeStoreCartItem(variantId) {
+  return cartOf(await apiFetch(`/store/cart/items/${variantId}`, { method: "DELETE" }));
+}
+
+export async function clearStoreCart() {
+  return cartOf(await apiFetch("/store/cart", { method: "DELETE" }));
+}
+
+// ---- Store Admin: variants ----
+
+/** Adds a variant; returns the refreshed product detail. */
+export async function adminCreateStoreVariant(productId, payload) {
+  return apiFetch(`/admin/store/products/${productId}/variants`, { method: "POST", body: payload });
+}
+
+export async function adminUpdateStoreVariant(variantId, payload) {
+  return apiFetch(`/admin/store/variants/${variantId}`, { method: "PATCH", body: payload });
+}
+
+export async function adminDeleteStoreVariant(variantId) {
+  return apiFetch(`/admin/store/variants/${variantId}`, { method: "DELETE" });
+}
+
+export async function adminListStoreCategories() {
+  return apiFetch("/admin/store/categories");
+}
+
+export async function adminCreateStoreCategory(payload) {
+  return apiFetch("/admin/store/categories", { method: "POST", body: payload });
+}
+
+export async function adminUpdateStoreCategory(id, payload) {
+  return apiFetch(`/admin/store/categories/${id}`, { method: "PATCH", body: payload });
+}
+
+export async function adminDeleteStoreCategory(id) {
+  return apiFetch(`/admin/store/categories/${id}`, { method: "DELETE" });
+}
+
+export async function adminListStoreBrands() {
+  return apiFetch("/admin/store/brands");
+}
+
+export async function adminCreateStoreBrand(payload) {
+  return apiFetch("/admin/store/brands", { method: "POST", body: payload });
+}
+
+export async function adminUpdateStoreBrand(id, payload) {
+  return apiFetch(`/admin/store/brands/${id}`, { method: "PATCH", body: payload });
+}
+
+export async function adminDeleteStoreBrand(id) {
+  return apiFetch(`/admin/store/brands/${id}`, { method: "DELETE" });
 }

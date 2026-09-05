@@ -15,6 +15,10 @@ import {
   ExternalLink,
   Trophy,
   LifeBuoy,
+  Store,
+  Package,
+  FolderTree,
+  Award, ClipboardList, Boxes, TicketPercent, Settings,
 } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
@@ -33,6 +37,15 @@ const nav = [
   { to: "/platform/finance", label: "مالی", icon: TrendingUp },
   { to: "/platform/sports", label: "رشته‌های ورزشی", icon: Trophy },
   { to: "/platform/tickets", label: "تیکت‌های پشتیبانی", icon: LifeBuoy },
+  { to: "/platform/store", label: "فروشگاه", icon: Store },
+  { to: "/platform/store/products", label: "محصولات فروشگاه", icon: Package },
+  { to: "/platform/store/categories", label: "دسته‌بندی‌های فروشگاه", icon: FolderTree },
+  { to: "/platform/store/brands", label: "برندهای فروشگاه", icon: Award },
+          { to: "/platform/store/orders", label: "سفارش‌های فروشگاه", icon: ClipboardList },
+          { to: "/platform/store/inventory", label: "انبار فروشگاه", icon: Boxes },
+          { to: "/platform/store/coupons", label: "کدهای تخفیف", icon: TicketPercent },
+          { to: "/platform/store/customers", label: "مشتریان فروشگاه", icon: Users },
+          { to: "/platform/store/settings", label: "تنظیمات فروشگاه", icon: Settings },
 ];
 
 // The nine sidebar destinations do not fit a tab bar; these four are the daily
@@ -49,6 +62,16 @@ const titles = {
   "/platform/finance": "گزارش مالی",
   "/platform/sports": "مدیریت رشته‌های ورزشی",
   "/platform/tickets": "تیکت‌های پشتیبانی",
+  "/platform/store": "مدیریت فروشگاه",
+  "/platform/store/products": "محصولات فروشگاه",
+  "/platform/store/categories": "دسته‌بندی‌های فروشگاه",
+  "/platform/store/brands": "برندهای فروشگاه",
+    "/platform/store/orders": "سفارش‌های فروشگاه",
+    "/platform/store/inventory": "انبار فروشگاه",
+    "/platform/store/coupons": "کدهای تخفیف",
+    "/platform/store/customers": "مشتریان فروشگاه",
+    "/platform/store/settings": "تنظیمات فروشگاه",
+    "/platform/store/orders/:id": "جزئیات سفارش فروشگاه",
 };
 
 export default function PlatformLayout() {

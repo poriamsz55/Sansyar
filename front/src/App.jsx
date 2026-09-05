@@ -16,6 +16,20 @@ import MyTickets from "./pages/MyTickets";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 
+import StoreHome from "./pages/store/StoreHome";
+import ProductDetail from "./pages/store/ProductDetail";
+import CartPage from "./pages/store/CartPage";
+import CheckoutPage from "./pages/store/CheckoutPage";
+import MyOrdersPage from "./pages/store/MyOrdersPage";
+import OrderDetailPage from "./pages/store/OrderDetailPage";
+import PaymentPage from "./pages/store/PaymentPage";
+
+import PlatformStore from "./pages/platform/store/PlatformStore";
+import PlatformStoreProducts from "./pages/platform/store/PlatformStoreProducts";
+import PlatformStoreProductEdit from "./pages/platform/store/PlatformStoreProductEdit";
+import PlatformStoreCategories from "./pages/platform/store/PlatformStoreCategories";
+import PlatformStoreBrands from "./pages/platform/store/PlatformStoreBrands";
+
 import OwnerLogin from "./pages/owner/OwnerLogin";
 import OwnerRegister from "./pages/owner/OwnerRegister";
 import OwnerForgotPassword from "./pages/owner/OwnerForgotPassword";
@@ -67,6 +81,13 @@ export default function App() {
           <Route path="/my-reservations" element={<MyReservations />} />
           <Route path="/my-tickets" element={<MyTickets />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/store" element={<StoreHome />} />
+          <Route path="/store/products/:idOrSlug" element={<ProductDetail />} />
+          <Route path="/store/cart" element={<CartPage />} />
+          <Route path="/store/checkout" element={<CheckoutPage />} />
+          <Route path="/store/orders" element={<MyOrdersPage />} />
+          <Route path="/store/orders/:id" element={<OrderDetailPage />} />
+          <Route path="/store/pay/:paymentId" element={<PaymentPage />} />
         </Route>
 
         <Route path="/login" element={<Login />} />
@@ -116,6 +137,11 @@ export default function App() {
           <Route path="finance" element={<PlatformFinance />} />
           <Route path="sports" element={<PlatformSports />} />
           <Route path="tickets" element={<PlatformTickets />} />
+          <Route path="store" element={<PlatformStore />} />
+          <Route path="store/products" element={<PlatformStoreProducts />} />
+          <Route path="store/products/:id" element={<PlatformStoreProductEdit />} />
+          <Route path="store/categories" element={<PlatformStoreCategories />} />
+          <Route path="store/brands" element={<PlatformStoreBrands />} />
         </Route>
 
         {/* Legacy /admin paths */}

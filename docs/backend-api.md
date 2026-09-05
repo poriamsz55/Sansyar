@@ -92,3 +92,66 @@ Sensitive auth endpoints are rate limited per IP.
 - `POST /admin/bookings/:id/cancel` — accepts optional `{ "reason": "…" }`; records a refund and a timeline event.
 - `POST /admin/reviews/:id/moderate`
 - `GET /admin/finance/summary`, `GET /admin/finance/settlements`
+
+## Store (sports shop)
+
+Public catalog (no auth). Product list responses are always paginated
+(`{items, total, page, limit}`); each item carries a live variant summary
+(`price_from`, `original_from`, `discount_max`, `total_stock`,
+`available_stock`, `primary_image`) computed from active variants.
+
+- `GET /store/products?q=&category_id=&brand_id=&page=&limit=` — published, active products only
+- `GET /store/products/:idOrSlug` — detail with active variants and resolved category/brand (404 when draft/unpublished)
+- `GET /store/categories` / `GET /store/brands` — active only
+
+### Store admin (super admin)
+
+- `GET /admin/store/products?q=&status=&category_id=&brand_id=&page=&limit=` — all products incl. drafts
+- `POST /admin/store/products` — creates the product plus its implicit `default` variant (`price`, `original_price`, `stock`, optional `sku`; auto-SKU when empty; slug auto-generated from the name when omitted, uniqueness ensured)
+- `GET /admin/store/products/:id` — admin detail incl. inactive variants
+- `PATCH /admin/store/products/:id` — partial update; `price`/`original_price`/`stock` patch the default variant
+- `POST /admin/store/products/:id/publish` / `POST /admin/store/products/:id/unpublish`
+- `DELETE /admin/store/products/:id` — removes the product and its variants (orders keep snapshots)
+- `GET|POST /admin/store/categories`, `PATCH|DELETE /admin/store/categories/:id` — delete is blocked while products reference the category
+- `GET|POST /admin/store/brands`, `PATCH|DELETE /admin/store/brands/:id` — same reference guard
+
+Product images are uploaded first via `POST /admin/uploads` (folder
+`store/products`) and attached as `images: [{url, alt, is_primary}]`; the
+backend normalises exactly one primary image (first by default).
+
+#### Store — Cart, Checkout & Orders (Phases 3–4)
+
+**Cart** (guests identified by `X-Cart-Token` header — returned on first add; merges into the user cart on the first authenticated request; prices/stock resolved live server-side, never stored):
+- `GET /store/cart` → `{cart: {items[], item_count, subtotal, total, has_issues}}` (+`cart_token` for new guest carts)
+- `POST /store/cart/items` `{variant_id, qty}` → cart view (409 if qty > available)
+- `PATCH /store/cart/items/:variantId` `{qty}` · `DELETE /store/cart/items/:variantId` · `DELETE /store/cart`
+
+**Settings/addresses** (auth: customer/super_admin):
+- `GET /store/settings` (public) → shipping methods `{id,name,fee,eta_days,is_active}`
+- `GET|POST /store/addresses`, `PATCH|DELETE /store/addresses/:id`
+
+**Checkout** — `POST /store/checkout` `{address_id | new_address{...}, save_address, shipping_method_id, customer_note}` + `Idempotency-Key` header → order (status `pending_payment`, payment `unpaid`, full item/address snapshots, server-computed totals = subtotal + shipping; cart cleared; duplicate key returns the original order).
+
+**Orders**:
+- `GET /store/orders`, `GET /store/orders/:id` (own orders only), `POST /store/orders/:id/cancel` (only while `pending_payment`)
+- Admin: `GET /admin/store/orders?status=&payment_status=&q=&page=&limit=`, `GET /admin/store/orders/:id`, `PATCH /admin/store/orders/:id/status` `{status, note, tracking_code}`
+- Status machine: `pending_payment→cancelled · paid→(processing|cancelled) · processing→(shipped|cancelled) · shipped→delivered`; `paid` is set ONLY by payment verification; every change appends a timeline event. Transitions are enforced server-side.
+
+#### Store — Payment, Inventory, Coupons & Admin (Phases 5–8)
+
+**Payment** (dev gateway, server-verified amounts):
+- `POST /store/orders/:id/pay` → `{payment, redirect_url:"/store/pay/:id"}` — amount copied from the order server-side; reuses a live `created` attempt
+- `POST /store/payments/:id/complete` `{result:"success"|"failure"}` → atomic claim; success flips order `pending_payment→paid` (only this path may), failure marks attempt failed for retry; admin cancel of paid orders refunds payments (`payment_status:"refunded"`)
+
+**Inventory** (all atomic conditional updates):
+- reserve on checkout (`reserved+=qty`, guard `stock-reserved>=qty`, rollback on failure), commit on payment (`stock-=qty, reserved-=qty`), release on cancel-unpaid, restock on cancel-paid
+- `GET /admin/store/inventory` (all variants, scarcest first), `POST /admin/store/variants/:id/stock` `{delta,reason}` (negative-stock guarded), `GET /admin/store/inventory/logs?variant_id|product_id|order_id`
+
+**Coupons** (`store_coupons`, `store_coupon_usage`):
+- `POST /store/cart/coupon` `{code}` / `DELETE /store/cart/coupon` — re-validated on every cart read; percent (with optional max cap) or fixed amount; min-subtotal, global usage limit, per-user limit; redemption claimed atomically at checkout and snapshotted on the order (`coupon_code`, `coupon_discount`)
+- Admin: `GET|POST /admin/store/coupons`, `PATCH|DELETE /admin/store/coupons/:id`
+
+**Admin completion**:
+- `GET /admin/store/stats` (orders by status, revenue total/today, products, low-stock)
+- `GET|PUT /admin/store/settings` (store info, open/closed, shipping methods CRUD — changes affect new orders only)
+- `GET /admin/store/customers` (aggregated from orders: counts, spend, recency)

@@ -28,6 +28,7 @@ export async function apiFetch(path, { method = "GET", body, headers } = {}) {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...cartTokenHeader(),
       ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -48,6 +49,29 @@ export async function apiFetch(path, { method = "GET", body, headers } = {}) {
     throw new Error(message);
   }
   return data;
+}
+
+// ---- Store cart token -------------------------------------------------
+
+const CART_TOKEN_KEY = "sansyar.cart_token";
+
+/**
+ * Guest carts are keyed by a token the backend hands out on the first add;
+ * we persist it and attach it to every store request (it merges into the
+ * user's cart at login, server-side).
+ */
+export function getCartToken() {
+  return localStorage.getItem(CART_TOKEN_KEY) || "";
+}
+
+export function setCartToken(token) {
+  if (token) localStorage.setItem(CART_TOKEN_KEY, token);
+  else localStorage.removeItem(CART_TOKEN_KEY);
+}
+
+function cartTokenHeader() {
+  const token = getCartToken();
+  return token ? { "X-Cart-Token": token } : {};
 }
 
 export async function apiUpload(file, { folder = "uploads", admin = false } = {}) {

@@ -51,6 +51,39 @@ func (a *App) setupRoutes(e *echo.Echo) {
 	api.GET("/complexes/:complexId/reviews", a.reviewHandler.List)
 	api.POST("/support/tickets", a.supportHandler.Create, authLimit)
 
+	// Store (sports shop) public catalog.
+	api.GET("/store/products", a.storeHandler.ListProducts)
+	api.GET("/store/products/:idOrSlug", a.storeHandler.GetProduct)
+	api.GET("/store/categories", a.storeHandler.ListCategories)
+	api.GET("/store/brands", a.storeHandler.ListBrands)
+
+	// Cart: works for guests (X-Cart-Token) and customers; guest carts merge
+	// into the user cart on the first authenticated request.
+	storeCart := api.Group("", sansyarmw.OptionalAuth(a.cfg.JWTSecret))
+	storeCart.GET("/store/cart", a.storeHandler.GetCart)
+	storeCart.POST("/store/cart/items", a.storeHandler.AddCartItem)
+	storeCart.PATCH("/store/cart/items/:variantId", a.storeHandler.UpdateCartItem)
+	storeCart.DELETE("/store/cart/items/:variantId", a.storeHandler.RemoveCartItem)
+	storeCart.DELETE("/store/cart", a.storeHandler.ClearCart)
+	storeCart.POST("/store/cart/coupon", a.storeHandler.ApplyCoupon)
+	storeCart.DELETE("/store/cart/coupon", a.storeHandler.RemoveCoupon)
+
+	// Public store settings (shipping methods shown at checkout).
+	api.GET("/store/settings", a.storeHandler.PublicSettings)
+
+	// Checkout & orders require a customer (or admin) session.
+	storeCustomer := api.Group("", sansyarmw.Auth(a.cfg.JWTSecret), sansyarmw.RequireRoles(auth.RoleCustomer, auth.RoleSuperAdmin))
+	storeCustomer.GET("/store/addresses", a.storeHandler.ListAddresses)
+	storeCustomer.POST("/store/addresses", a.storeHandler.CreateAddress)
+	storeCustomer.PATCH("/store/addresses/:id", a.storeHandler.UpdateAddress)
+	storeCustomer.DELETE("/store/addresses/:id", a.storeHandler.DeleteAddress)
+	storeCustomer.POST("/store/checkout", a.storeHandler.Checkout)
+	storeCustomer.GET("/store/orders", a.storeHandler.MyOrders)
+	storeCustomer.GET("/store/orders/:id", a.storeHandler.GetMyOrder)
+	storeCustomer.POST("/store/orders/:id/cancel", a.storeHandler.CancelMyOrder)
+	storeCustomer.POST("/store/orders/:id/pay", a.storeHandler.InitiateOrderPayment)
+	storeCustomer.POST("/store/payments/:id/complete", a.storeHandler.CompleteOrderPayment)
+
 	customer := authenticated.Group("", sansyarmw.RequireRoles(auth.RoleCustomer, auth.RoleSuperAdmin))
 	customer.POST("/bookings", a.bookingHandler.Create)
 	customer.GET("/my/bookings", a.bookingHandler.MyBookings)
@@ -147,4 +180,41 @@ func (a *App) setupRoutes(e *echo.Echo) {
 	admin.GET("/support/tickets/:id", a.supportHandler.Get)
 	admin.PATCH("/support/tickets/:id/status", a.supportHandler.UpdateStatus)
 	admin.POST("/support/tickets/:id/reply", a.supportHandler.Reply)
+
+	// Store Admin: catalog management (products, categories, brands).
+	admin.GET("/store/products", a.storeHandler.ListProductsAdmin)
+	admin.POST("/store/products", a.storeHandler.CreateProduct)
+	admin.GET("/store/products/:id", a.storeHandler.GetProductAdmin)
+	admin.PATCH("/store/products/:id", a.storeHandler.UpdateProduct)
+	admin.DELETE("/store/products/:id", a.storeHandler.DeleteProduct)
+	admin.POST("/store/products/:id/publish", a.storeHandler.PublishProduct)
+	admin.POST("/store/products/:id/unpublish", a.storeHandler.UnpublishProduct)
+	// Variant management (SKU, price, stock, options).
+	admin.POST("/store/products/:id/variants", a.storeHandler.CreateVariant)
+	admin.PATCH("/store/variants/:id", a.storeHandler.UpdateVariant)
+	admin.DELETE("/store/variants/:id", a.storeHandler.DeleteVariant)
+	admin.GET("/store/categories", a.storeHandler.ListCategoriesAdmin)
+	admin.POST("/store/categories", a.storeHandler.CreateCategory)
+	admin.PATCH("/store/categories/:id", a.storeHandler.UpdateCategory)
+	admin.DELETE("/store/categories/:id", a.storeHandler.DeleteCategory)
+	admin.GET("/store/brands", a.storeHandler.ListBrandsAdmin)
+	admin.POST("/store/brands", a.storeHandler.CreateBrand)
+	admin.PATCH("/store/brands/:id", a.storeHandler.UpdateBrand)
+	admin.DELETE("/store/brands/:id", a.storeHandler.DeleteBrand)
+	// Dashboard, settings & customers.
+	admin.GET("/store/stats", a.storeHandler.StatsAdmin)
+	admin.PUT("/store/settings", a.storeHandler.UpdateSettingsAdmin)
+	admin.GET("/store/customers", a.storeHandler.ListCustomersAdmin)
+	// Coupons.
+	admin.GET("/store/coupons", a.storeHandler.ListCouponsAdmin)
+	admin.POST("/store/coupons", a.storeHandler.CreateCouponAdmin)
+	admin.PATCH("/store/coupons/:id", a.storeHandler.UpdateCouponAdmin)
+	admin.DELETE("/store/coupons/:id", a.storeHandler.DeleteCouponAdmin)
+	// Order & inventory management.
+	admin.POST("/store/variants/:id/stock", a.storeHandler.AdjustStock)
+	admin.GET("/store/inventory", a.storeHandler.ListInventory)
+	admin.GET("/store/inventory/logs", a.storeHandler.ListInventoryLogs)
+	admin.GET("/store/orders", a.storeHandler.ListOrdersAdmin)
+	admin.GET("/store/orders/:id", a.storeHandler.GetOrderAdmin)
+	admin.PATCH("/store/orders/:id/status", a.storeHandler.UpdateOrderStatus)
 }

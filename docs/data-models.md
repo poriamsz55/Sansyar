@@ -21,5 +21,6 @@ MongoDB collections:
 - `sms_logs` reserved for provider delivery tracking
 - `finance_events` reserved for ledger-style finance reporting
 - `audit_logs` — schedule-change history for the session manager (actor, hall, action, details)
+- `store_categories`, `store_brands`, `store_products` (embedded `images [{url, alt, is_primary}]` and `attributes [{key, value}]`; `status` draft/published), `store_product_variants` (own collection so stock reservation is one atomic conditional update; unique `sku`; `stock` + `reserved` with available = stock − reserved; every product starts with an implicit `default` variant)
 
 Important indexes are created on boot: unique `users.phone` and sparse-unique `users.national_id`, complex `location` as `2dsphere`, slot hall/time uniqueness, slot search fields, idempotency key uniqueness, wallet account uniqueness, and review uniqueness per booking. For multi-capacity sessions, the legacy single-booking-per-slot index is dropped and replaced by a partial unique index on `(slot_id, customer_id)` over active statuses — many customers can fill a session's capacity, but one customer cannot double-book it.
