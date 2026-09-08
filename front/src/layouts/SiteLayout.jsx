@@ -179,8 +179,23 @@ function Footer() {
           </ul>
         </div>
       </div>
-      <div className="border-t border-white/10 py-5 text-center text-xs text-white/50">
-        © تمامی حقوق برای پلتفرم سانسیار محفوظ است.
+      <div className="flex flex-col items-center justify-between gap-4 border-t border-white/10 py-5 text-xs text-white/50 sm:flex-row">
+        <span>© تمامی حقوق برای پلتفرم سانسیار محفوظ است.</span>
+        <a
+          referrerPolicy="origin"
+          target="_blank"
+          rel="noreferrer"
+          href="https://trustseal.enamad.ir/?id=7347772&Code=hyLyej5OmllVENIa986kVv597FYYZLBS"
+          className="shrink-0"
+        >
+          <img
+            referrerPolicy="origin"
+            src="https://trustseal.enamad.ir/logo.aspx?id=7347772&Code=hyLyej5OmllVENIa986kVv597FYYZLBS"
+            alt="نماد اعتماد الکترونیکی"
+            code="hyLyej5OmllVENIa986kVv597FYYZLBS"
+            className="h-[72px] w-[72px] cursor-pointer rounded bg-white object-contain p-1"
+          />
+        </a>
       </div>
     </footer>
   );
